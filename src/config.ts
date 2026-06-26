@@ -154,6 +154,21 @@ export const config = {
     timeoutMs: int(process.env.CURSOR_TIMEOUT_MS, 5 * 60 * 1000),
   },
 
+  /** Auto-build settings. */
+  build: {
+    /** Max cursor-agent builds running at once (each needs ~0.5-1GB). */
+    maxConcurrent: int(process.env.MAX_CONCURRENT_BUILDS, 2),
+  },
+
+  /**
+   * Vercel — after a successful Cursor build, deploy the generated MVP to Vercel
+   * so it gets a real public URL. Token + team are seeded from Fly secrets.
+   */
+  vercel: {
+    token: process.env.VERCEL_TOKEN ?? "",
+    teamId: process.env.VERCEL_TEAM_ID ?? "",
+  },
+
   pipeline: {
     /** Soft cap of signals fetched per source per run. */
     perSourceLimit: int(process.env.PER_SOURCE_LIMIT, 25),

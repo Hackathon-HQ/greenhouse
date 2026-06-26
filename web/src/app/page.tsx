@@ -26,11 +26,22 @@ import { Sidebar } from "@/components/sidebar";
 import { SeedDetail } from "@/components/seed-detail";
 import { EvidencePanel } from "@/components/evidence-panel";
 import { ActionBar } from "@/components/action-bar";
+import { BuildDetail, type BuildDetailData } from "@/components/build-detail";
+import type { BuildStatus } from "@/lib/api";
 
 type Decision = "approve" | "deny";
 
 /** Lightweight per-idea metadata used to render building/built cards. */
 type IdeaMeta = { title: string; confidence: number; signalCount: number };
+
+/** Recover the BuildStatus from a building card's meta suffix (e.g. "… · Building"). */
+function statusFromBuildingMeta(meta: string): BuildStatus {
+  const tail = meta.split("·").pop()?.trim().toLowerCase() ?? "";
+  if (tail === "queued") return "queued";
+  if (tail === "failed") return "failed";
+  if (tail === "skipped") return "skipped";
+  return "building";
+}
 
 const cardVariants = {
   enter: { opacity: 0, y: 14, scale: 0.99 },
@@ -80,6 +91,9 @@ export default function Home() {
   const [direction, setDirection] = useState(1);
   const [flash, setFlash] = useState<Decision | null>(null);
   const [hunting, setHunting] = useState(false);
+  const [selectedBuild, setSelectedBuild] = useState<
+    { kind: "building" | "built"; id: string } | null
+  >(null);
   const lock = useRef(false);
   /** id -> meta, so build SSE events can render cards without the seed in view. */
   const ideaMeta = useRef<Map<string, IdeaMeta>>(new Map());
@@ -134,7 +148,7 @@ export default function Home() {
         if (prev.some((b) => b.id === a.ideaId)) {
           return prev.map((b) =>
             b.id === a.ideaId
-              ? { ...b, previewUrl: hostedPreview, workdir: a.workdir ?? b.workdir }
+              ? { ...b, previewUrl: hostedPreview, workdir: a.workdir ?? b.workdir, logs: a.logs }
               : b,
           );
         }
@@ -146,6 +160,7 @@ export default function Home() {
             meta: `${sourcesN} sources · ${conf}% · Built`,
             previewUrl: hostedPreview,
             workdir: a.workdir,
+            logs: a.logs,
           },
           ...prev,
         ];
@@ -167,13 +182,14 @@ export default function Home() {
             age: "now",
             meta: `${sourcesN} sources · ${conf}% · ${label[0].toUpperCase()}${label.slice(1)}`,
             log,
+            logs: a.logs,
             steps,
           },
           ...prev,
         ];
       }
       return prev.map((b) =>
-        b.id === a.ideaId ? { ...b, steps, log: log || b.log } : b,
+        b.id === a.ideaId ? { ...b, steps, log: log || b.log, logs: a.logs } : b,
       );
     });
   }, []);
@@ -275,9 +291,52 @@ export default function Home() {
     return () => window.removeEventListener("keydown", onKey);
   }, [decide]);
 
+  // Resolve the selected card from live state by id, so the modal updates LIVE
+  // as new build artifacts stream in while it's open.
+  let selectedBuildData: BuildDetailData | null = null;
+  if (selectedBuild) {
+    if (selectedBuild.kind === "building") {
+      const seed = building.find((b) => b.id === selectedBuild.id);
+      if (seed) {
+        selectedBuildData = {
+          title: seed.title,
+          status: statusFromBuildingMeta(seed.meta),
+          meta: seed.meta,
+          steps: seed.steps,
+          logs: seed.logs,
+        };
+      } else {
+        // The card may have moved to BUILT (build succeeded) while open.
+        const promoted = built.find((b) => b.id === selectedBuild.id);
+        if (promoted) {
+          selectedBuildData = {
+            title: promoted.title,
+            status: "succeeded",
+            meta: promoted.meta,
+            logs: promoted.logs,
+            previewUrl: promoted.previewUrl,
+            workdir: promoted.workdir,
+          };
+        }
+      }
+    } else {
+      const seed = built.find((b) => b.id === selectedBuild.id);
+      if (seed) {
+        selectedBuildData = {
+          title: seed.title,
+          status: "succeeded",
+          meta: seed.meta,
+          logs: seed.logs,
+          previewUrl: seed.previewUrl,
+          workdir: seed.workdir,
+        };
+      }
+    }
+  }
+
   return (
     <div className="flex h-full w-full bg-app">
-      <Sidebar building={building} built={built} />
+      <Sidebar building={building} built={built} onSelect={(kind, id) => setSelectedBuild({ kind, id })} />
 
       <main className="relative flex min-w-0 flex-1 flex-col">
         <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -318,6 +377,16 @@ export default function Home() {
       </main>
 
       <EvidencePanel sources={current?.sources ?? []} signalCount={current?.signalCount ?? 0} />
+
+      <AnimatePresence>
+        {selectedBuildData ? (
+          <BuildDetail
+            key={selectedBuild?.id ?? "build-detail"}
+            build={selectedBuildData}
+            onClose={() => setSelectedBuild(null)}
+          />
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }

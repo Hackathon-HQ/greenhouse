@@ -14,6 +14,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { AppIdea, BuildArtifact } from "../types.js";
+import { config } from "../config.js";
 import { store } from "../store/store.js";
 import { runDiscovery } from "../pipeline/discover.js";
 import { buildIdea } from "../build/cursor.js";
@@ -80,7 +81,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const idea = store.getIdea(req.params.id);
     if (!idea) return reply.code(404).send({ error: "idea not found" });
 
-    const waiting = buildQueue.length > 0 || buildActive;
+    const waiting = activeBuilds >= config.build.maxConcurrent;
     const queued: BuildArtifact = {
       ideaId: idea.id,
       status: "queued",
@@ -137,27 +138,25 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   });
 }
 
-// --- Serial build queue ---------------------------------------------------
-// Cursor builds are run ONE AT A TIME. Two concurrent cursor-agent processes
-// (plus node + tavily-mcp) OOM the 1 GB VM, which restarts and loses state.
+// --- Concurrency-limited build queue --------------------------------------
+// Cursor builds run up to `config.build.maxConcurrent` at a time. Extra builds
+// wait in the queue. The cap keeps the VM from OOMing under many approvals.
 const buildQueue: Array<{ idea: AppIdea; queued: BuildArtifact }> = [];
-let buildActive = false;
+let activeBuilds = 0;
 
 function enqueueBuild(idea: AppIdea, queued: BuildArtifact): void {
   buildQueue.push({ idea, queued });
-  void drainBuildQueue();
+  pumpBuilds();
 }
 
-async function drainBuildQueue(): Promise<void> {
-  if (buildActive) return;
-  buildActive = true;
-  try {
-    let next: { idea: AppIdea; queued: BuildArtifact } | undefined;
-    while ((next = buildQueue.shift())) {
-      await runBuild(next.idea, next.queued);
-    }
-  } finally {
-    buildActive = false;
+function pumpBuilds(): void {
+  while (activeBuilds < config.build.maxConcurrent && buildQueue.length > 0) {
+    const next = buildQueue.shift()!;
+    activeBuilds++;
+    void runBuild(next.idea, next.queued).finally(() => {
+      activeBuilds--;
+      pumpBuilds();
+    });
   }
 }
 

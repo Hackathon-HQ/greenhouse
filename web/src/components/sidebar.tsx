@@ -22,9 +22,32 @@ function EmptyHint({ children }: { children: React.ReactNode }) {
   );
 }
 
-function CardShell({ children }: { children: React.ReactNode }) {
+function CardShell({
+  children,
+  onClick,
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+}) {
   return (
-    <div className="flex flex-col rounded-xl border border-border bg-app px-[13px] py-3 transition-colors duration-150 hover:border-border-strong">
+    <div
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
+      className={`flex flex-col rounded-xl border border-border bg-app px-[13px] py-3 transition-colors duration-150 hover:border-border-strong ${
+        onClick ? "cursor-pointer" : ""
+      }`}
+    >
       {children}
     </div>
   );
@@ -39,10 +62,10 @@ function CardHead({ title, age }: { title: string; age: string }) {
   );
 }
 
-function BuildingCard({ seed }: { seed: BuildingSeed }) {
+function BuildingCard({ seed, onSelect }: { seed: BuildingSeed; onSelect?: () => void }) {
   const activeIndex = seed.steps.findIndex((s) => !s.done);
   return (
-    <CardShell>
+    <CardShell onClick={onSelect}>
       <CardHead title={seed.title} age={seed.age} />
       <span className="mt-[9px] font-mono text-[11px] tracking-[-0.01em] text-sub">{seed.meta}</span>
       {seed.log ? (
@@ -106,23 +129,25 @@ function ActionChip({
       </span>
     </>
   );
+  // Keep chip links working without opening the card's detail modal.
+  const stop = (e: React.MouseEvent) => e.stopPropagation();
   if (href) {
     return (
-      <a href={href} target="_blank" rel="noreferrer" className={className}>
+      <a href={href} target="_blank" rel="noreferrer" className={className} onClick={stop}>
         {inner}
       </a>
     );
   }
   return (
-    <button type="button" className={className}>
+    <button type="button" className={className} onClick={stop}>
       {inner}
     </button>
   );
 }
 
-function BuiltCard({ seed }: { seed: BuiltSeed }) {
+function BuiltCard({ seed, onSelect }: { seed: BuiltSeed; onSelect?: () => void }) {
   return (
-    <CardShell>
+    <CardShell onClick={onSelect}>
       <CardHead title={seed.title} age={seed.age} />
       <span className="mt-[10px] font-mono text-[11px] tracking-[-0.01em] text-sub">{seed.meta}</span>
       <div className="mt-[11px] flex flex-wrap items-center gap-1.5">
@@ -140,9 +165,11 @@ function BuiltCard({ seed }: { seed: BuiltSeed }) {
 export function Sidebar({
   building,
   built,
+  onSelect,
 }: {
   building: BuildingSeed[];
   built: BuiltSeed[];
+  onSelect?: (kind: "building" | "built", id: string) => void;
 }) {
   return (
     <aside className="flex h-full w-[320px] shrink-0 flex-col border-r border-border bg-soft">
@@ -155,7 +182,13 @@ export function Sidebar({
           {building.length === 0 ? (
             <EmptyHint>Approve an idea to start building it here.</EmptyHint>
           ) : (
-            building.map((seed) => <BuildingCard key={seed.id} seed={seed} />)
+            building.map((seed) => (
+              <BuildingCard
+                key={seed.id}
+                seed={seed}
+                onSelect={onSelect ? () => onSelect("building", seed.id) : undefined}
+              />
+            ))
           )}
         </section>
         <section className="flex flex-col gap-1.5">
@@ -163,7 +196,13 @@ export function Sidebar({
           {built.length === 0 ? (
             <EmptyHint>Finished builds will appear here.</EmptyHint>
           ) : (
-            built.map((seed) => <BuiltCard key={seed.id} seed={seed} />)
+            built.map((seed) => (
+              <BuiltCard
+                key={seed.id}
+                seed={seed}
+                onSelect={onSelect ? () => onSelect("built", seed.id) : undefined}
+              />
+            ))
           )}
         </section>
       </div>

@@ -20,5 +20,6 @@ primary_region = "lhr"
   min_machines_running = 0
 
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "1gb"
+  # 2gb so up to 2 concurrent cursor-agent builds don't OOM the box.
+  size = "shared-cpu-2x"
+  memory = "2gb"

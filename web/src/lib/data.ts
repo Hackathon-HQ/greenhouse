@@ -29,6 +29,8 @@ export type BuildingSeed = {
   meta: string;
   /** Live, cleaned activity line from the most recent build log. */
   log?: string;
+  /** Full, live-growing cleaned Cursor-agent stream for the detail console. */
+  logs?: string[];
   steps: BuildStep[];
 };
 
@@ -41,6 +43,8 @@ export type BuiltSeed = {
   previewUrl?: string;
   /** Server-side path of the generated project, for the "Open in Cursor" deep link. */
   workdir?: string;
+  /** Full, cleaned Cursor-agent stream from the build, for the detail console. */
+  logs?: string[];
 };
 
 /** Real favicons, pulled from each source's domain (like ChatGPT citations). */

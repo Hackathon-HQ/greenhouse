@@ -30,6 +30,14 @@ import { dedupeIdeas } from "../pipeline/dedupe.js";
 import { providerAvailable, scoutModel } from "./provider.js";
 import { callMcpTool, getTavilyMcp } from "./mcp.js";
 import { runSearchTool } from "./tools.js";
+import {
+  appStoreReviews,
+  stackExchangeSearch,
+  githubIssues,
+  devtoSearch,
+  lobstersSearch,
+  youtubeComments,
+} from "./sources-extra.js";
 
 /** True when the agentic path is usable (provider key present + enabled). */
 export function agenticAvailable(): boolean {
@@ -149,9 +157,15 @@ function researchSystemPrompt(target: number): string {
     "- reddit_search: Reddit threads via web search (Reddit's own API is rate-limited here, so this is the reliable path).",
     "- hackernews_search: reliable direct source for fresh 'Show HN' launches and evergreen 'Ask HN: what do you wish existed' threads.",
     "- search_x_posts: real-time demand from X (Twitter) — fast-moving complaints and 'I wish there was an app for…' posts. Use it for what's bubbling up RIGHT NOW.",
+    "- appstore_reviews: THE go-to for 'what do users HATE about existing apps'. Pulls 1-3★ App Store reviews for an app category — each low-star review is a concrete, unmet feature-gap pain point. Hit this for any consumer-app idea.",
+    "- github_issues: developer-tool gaps — open 'help wanted' + 'feature request' issues maintainers admit aren't built. Use for dev-tool / CLI / API / library ideas.",
+    "- stackexchange_search: unmet tooling needs — high-vote StackOverflow questions with NO accepted answer ('is there a way to…', recurring workflow friction).",
+    "- devto_search: practitioner write-ups ('I built X because nothing did Y') that expose workflow gaps and tool wishes — good for indie-hacker / developer angles.",
+    "- lobsters_search: a sharp technical community's hottest/newest discussion, filtered to your query — a high-signal cross-check on infra / dev-tool ideas.",
+    "- youtube_comments: (when available) loud, specific gripes in comments on review / 'X vs Y' videos — consumer frustration with a product category.",
     "- emit_idea: record ONE finished, evidence-grounded idea — call it the MOMENT an idea is grounded; it streams straight to the feed.",
     "",
-    "Use ALL your sources generously — you have ample budget. Run many searches, go deep with tavily_extract on the best threads, and cross-reference Reddit + HN + X + web before converging. Breadth across sources beats depth on any single one.",
+    "Use ALL your sources generously — you have ample budget. Run many searches, go deep with tavily_extract on the best threads, and cross-reference Reddit + HN + X + web + App Store reviews + GitHub/StackOverflow before converging. Breadth across sources beats depth on any single one. Rule of thumb: consumer-app gripes → appstore_reviews; developer-tool gaps → github_issues / stackexchange_search / lobsters / dev.to.",
     "",
     "## Judge results by CONTENT, not score",
     "'Top N app ideas 2026' blog listicles score high but are spam — ignore them. Authentic pain-point threads often score LOW yet hold the real signal. Your richest veins: 'what software do you wish existed', 'app that should exist', 'biggest frustration with <category>', 'is there a tool for'.",
@@ -281,6 +295,113 @@ export async function runAgenticDiscovery(
       return text;
     },
   });
+
+  // --- Extra KEYLESS idea-mining sources (src/agent/sources-extra.ts) ---
+  searchTools.appstore_reviews = tool({
+    description:
+      "Mine LOW-STAR (1-3★) App Store reviews of apps matching a query. The " +
+      "single best source for 'what do users HATE about existing apps' — each " +
+      "review is a concrete, unmet feature-gap pain point. Pass an app category " +
+      "or need (e.g. 'budget tracker', 'habit tracker', 'recipe app').",
+    inputSchema: z.object({
+      query: z.string(),
+      limit: z.number().optional(),
+    }),
+    execute: async ({ query, limit }) => {
+      onLog(`[agent] appstore_reviews(${JSON.stringify(query)})`);
+      const text = truncate(await appStoreReviews(query, limit ?? 8));
+      record(`appstore_reviews: ${query}`, text);
+      return text;
+    },
+  });
+
+  searchTools.stackexchange_search = tool({
+    description:
+      "Search StackOverflow for high-vote questions WITHOUT an accepted answer " +
+      "— unmet tooling/automation needs developers keep hitting. Use for " +
+      "'is there a way to…', workflow friction, missing libraries/tools.",
+    inputSchema: z.object({
+      query: z.string(),
+      limit: z.number().optional(),
+    }),
+    execute: async ({ query, limit }) => {
+      onLog(`[agent] stackexchange_search(${JSON.stringify(query)})`);
+      const text = truncate(await stackExchangeSearch(query, limit ?? 8));
+      record(`stackexchange_search: ${query}`, text);
+      return text;
+    },
+  });
+
+  searchTools.github_issues = tool({
+    description:
+      "Search OPEN GitHub issues labelled 'help wanted' + 'feature request' — " +
+      "developer-tool gaps maintainers openly admit aren't built yet. Best for " +
+      "dev-tool / CLI / API / library ideas. Pass a tool category or domain.",
+    inputSchema: z.object({
+      query: z.string(),
+      limit: z.number().optional(),
+    }),
+    execute: async ({ query, limit }) => {
+      onLog(`[agent] github_issues(${JSON.stringify(query)})`);
+      const text = truncate(await githubIssues(query, limit ?? 8));
+      record(`github_issues: ${query}`, text);
+      return text;
+    },
+  });
+
+  searchTools.devto_search = tool({
+    description:
+      "Search dev.to articles (full-text + tag feed) for practitioner write-ups " +
+      "— 'I built X because nothing did Y' posts that reveal workflow gaps and " +
+      "tool wishes. Good for developer/indie-hacker angles.",
+    inputSchema: z.object({
+      query: z.string(),
+      limit: z.number().optional(),
+    }),
+    execute: async ({ query, limit }) => {
+      onLog(`[agent] devto_search(${JSON.stringify(query)})`);
+      const text = truncate(await devtoSearch(query, limit ?? 8));
+      record(`devto_search: ${query}`, text);
+      return text;
+    },
+  });
+
+  searchTools.lobsters_search = tool({
+    description:
+      "Scan lobste.rs (a sharp, technical community) hottest/newest stories, " +
+      "filtered to your query, for emerging dev-tool discussion and gripes. " +
+      "Use as a high-signal cross-check on technical / infra ideas.",
+    inputSchema: z.object({
+      query: z.string(),
+      limit: z.number().optional(),
+    }),
+    execute: async ({ query, limit }) => {
+      onLog(`[agent] lobsters_search(${JSON.stringify(query)})`);
+      const text = truncate(await lobstersSearch(query, limit ?? 8));
+      record(`lobsters_search: ${query}`, text);
+      return text;
+    },
+  });
+
+  // YouTube comments — only exposed when a key is configured (server-side).
+  if (config.youtube.apiKey) {
+    searchTools.youtube_comments = tool({
+      description:
+        "Read top comments on review / 'X vs Y' / tutorial videos for a topic — " +
+        "loud, specific complaints about existing tools and 'I wish it could…' " +
+        "asks. Use to gauge real consumer frustration with a product category.",
+      inputSchema: z.object({
+        query: z.string(),
+        limit: z.number().optional(),
+      }),
+      execute: async ({ query, limit }) => {
+        onLog(`[agent] youtube_comments(${JSON.stringify(query)})`);
+        const text = truncate(await youtubeComments(query, limit ?? 10));
+        record(`youtube_comments: ${query}`, text);
+        return text;
+      },
+    });
+  }
 
   // Wrap each Tavily MCP tool as a dynamic AI SDK tool.
   if (mcp) {

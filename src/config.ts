@@ -49,6 +49,24 @@ export const config = {
   },
 
   /**
+   * Optional keys for extra KEYLESS scout sources (src/agent/sources-extra.ts).
+   * All three sources work with NO key; these only lift rate limits / enable
+   * the source. Absent => the source still runs (or, for YouTube, is hidden).
+   */
+  stackexchange: {
+    /** Optional: lifts StackExchange keyless ~300/day to 10k/day. */
+    apiKey: process.env.STACKEXCHANGE_KEY ?? "",
+  },
+  github: {
+    /** Optional: lifts GitHub search 10/min -> 30/min. */
+    token: process.env.GITHUB_TOKEN ?? "",
+  },
+  youtube: {
+    /** Required for youtube_comments; when absent the tool is not exposed. */
+    apiKey: process.env.YOUTUBE_API_KEY ?? "",
+  },
+
+  /**
    * umans.ai — OpenAI-compatible LLM provider that drives the AGENTIC idea
    * scout (tool-calling loop). Multiple keys can be supplied (comma-separated)
    * for round-robin failover across the free tier.

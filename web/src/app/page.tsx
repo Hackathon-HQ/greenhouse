@@ -21,7 +21,7 @@ import {
   type AppIdea,
   type BuildArtifact,
 } from "@/lib/api";
-import { appIdeaToSeed, isTerminalBuild, signalCountFor, stepsFromArtifact } from "@/lib/map";
+import { appIdeaToSeed, isTerminalBuild, latestLogLine, signalCountFor, stepsFromArtifact } from "@/lib/map";
 import { Sidebar } from "@/components/sidebar";
 import { SeedDetail } from "@/components/seed-detail";
 import { EvidencePanel } from "@/components/evidence-panel";
@@ -155,6 +155,7 @@ export default function Home() {
 
     // queued / building / failed / skipped -> reflect on a building card.
     const steps = stepsFromArtifact(a);
+    const log = latestLogLine(a.logs);
     setBuilding((prev) => {
       const idx = prev.findIndex((b) => b.id === a.ideaId);
       if (idx === -1) {
@@ -165,12 +166,15 @@ export default function Home() {
             title,
             age: "now",
             meta: `${sourcesN} sources · ${conf}% · ${label[0].toUpperCase()}${label.slice(1)}`,
+            log,
             steps,
           },
           ...prev,
         ];
       }
-      return prev.map((b) => (b.id === a.ideaId ? { ...b, steps } : b));
+      return prev.map((b) =>
+        b.id === a.ideaId ? { ...b, steps, log: log || b.log } : b,
+      );
     });
   }, []);
 

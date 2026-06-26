@@ -27,6 +27,8 @@ export type BuildingSeed = {
   title: string;
   age: string;
   meta: string;
+  /** Live, cleaned activity line from the most recent build log. */
+  log?: string;
   steps: BuildStep[];
 };
 
@@ -199,7 +201,6 @@ export const initialBuilt: BuiltSeed[] = [];
 
 export function freshBuildSteps(): BuildStep[] {
   return [
-    { label: "Writing spec", done: true },
     { label: "Building prototype", done: false },
     { label: "Publishing cited.md", done: false },
     { label: "Deploying preview", done: false },

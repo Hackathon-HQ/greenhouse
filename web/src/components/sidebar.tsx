@@ -45,6 +45,14 @@ function BuildingCard({ seed }: { seed: BuildingSeed }) {
     <CardShell>
       <CardHead title={seed.title} age={seed.age} />
       <span className="mt-[9px] font-mono text-[11px] tracking-[-0.01em] text-sub">{seed.meta}</span>
+      {seed.log ? (
+        <div className="mt-[9px] flex items-center gap-[7px]">
+          <span className="size-[6px] shrink-0 animate-pulse rounded-full bg-ink" />
+          <span className="truncate font-mono text-[10.5px] leading-[15px] tracking-[-0.01em] text-muted">
+            {seed.log}
+          </span>
+        </div>
+      ) : null}
       <div className="mt-[11px] flex flex-col gap-[7px]">
         {seed.steps.map((step, i) => {
           const active = i === activeIndex;

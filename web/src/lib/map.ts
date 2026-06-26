@@ -170,20 +170,20 @@ export function appIdeaToSeed(idea: AppIdea): ReviewSeed {
   };
 }
 
-/** The 4 build-step labels shown on a building card, in order. */
+/** The 3 build-step labels shown on a building card, in order. */
 const STEP_LABELS = [
-  "Writing spec",
   "Building prototype",
   "Publishing cited.md",
   "Deploying preview",
 ];
 
 /**
- * Map a BuildArtifact's status + logs onto the 4 visible build steps.
- *   queued    → spec done
- *   building  → spec + prototype done (+ cited.md if a log says "wrote"/"succeeded")
+ * Map a BuildArtifact's status + logs onto the 3 visible build steps.
+ *   queued    → nothing done yet
+ *   building  → "Building prototype" active; once a log says "wrote"/"succeeded",
+ *               "Building prototype" is done and "Publishing cited.md" goes active
  *   succeeded → all done
- *   failed/skipped → spec done (build stalled)
+ *   failed/skipped → terminal, nothing marked done
  */
 export function stepsFromArtifact(a: BuildArtifact): BuildStep[] {
   const logText = (a.logs ?? []).join("\n").toLowerCase();
@@ -191,21 +191,39 @@ export function stepsFromArtifact(a: BuildArtifact): BuildStep[] {
   let doneCount: number;
   switch (a.status) {
     case "queued":
-      doneCount = 1;
+      doneCount = 0;
       break;
     case "building":
-      doneCount = wrote ? 3 : 2;
+      doneCount = wrote ? 1 : 0;
       break;
     case "succeeded":
-      doneCount = 4;
+      doneCount = 3;
       break;
     case "failed":
     case "skipped":
     default:
-      doneCount = 1;
+      doneCount = 0;
       break;
   }
   return STEP_LABELS.map((label, i) => ({ label, done: i < doneCount }));
+}
+
+/**
+ * Return the last meaningful build log line, cleaned for display: strips the
+ * leading channel prefix ([build] / [cursor] / [cursor:stdout] / [cursor:stderr]),
+ * skips empty lines, collapses whitespace and caps the length.
+ */
+export function latestLogLine(logs: string[]): string {
+  const lines = logs ?? [];
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const cleaned = (lines[i] ?? "")
+      .replace(/^\s*\[(?:build|cursor|cursor:stdout|cursor:stderr)\]\s*/i, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!cleaned) continue;
+    return cleaned.length > 90 ? `${cleaned.slice(0, 89)}…` : cleaned;
+  }
+  return "";
 }
 
 export function isTerminalBuild(status: BuildStatus): boolean {

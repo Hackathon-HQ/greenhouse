@@ -9,12 +9,13 @@
  * giving up — transparent to the AI SDK.
  */
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import type { LanguageModel } from "ai";
 import { config } from "../config.js";
 
-/** True when the provider has at least one credential. */
+/** True when some scout LLM credential is available (Gemini or umans). */
 export function providerAvailable(): boolean {
-  return config.umans.apiKeys.length > 0;
+  return Boolean(config.gemini.apiKey) || config.umans.apiKeys.length > 0;
 }
 
 /**
@@ -42,10 +43,14 @@ function rotatingFetch(keys: string[]): typeof fetch {
 }
 
 /**
- * The language model the scout uses. Centralizing this means a future switch to
- * Gemini is `createGoogleGenerativeAI(...)` here + a config change, nothing else.
+ * The language model the scout uses. Prefers Gemini (DeepMind) when a key is
+ * present, otherwise falls back to umans. Swapping providers is isolated here.
  */
 export function scoutModel(): LanguageModel {
+  if (config.gemini.apiKey) {
+    const google = createGoogleGenerativeAI({ apiKey: config.gemini.apiKey });
+    return google(config.gemini.model);
+  }
   const keys = config.umans.apiKeys;
   const provider = createOpenAICompatible({
     name: "umans",

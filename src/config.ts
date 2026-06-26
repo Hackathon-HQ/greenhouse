@@ -67,9 +67,18 @@ export const config = {
   },
 
   /**
+   * Gemini (Google DeepMind) — the PRIMARY LLM for the agentic scout. When a
+   * key is present it takes precedence over umans (see provider.ts).
+   */
+  gemini: {
+    apiKey: process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY ?? "",
+    model: process.env.GEMINI_MODEL ?? "gemini-3.5-flash",
+  },
+
+  /**
    * umans.ai — OpenAI-compatible LLM provider that drives the AGENTIC idea
-   * scout (tool-calling loop). Multiple keys can be supplied (comma-separated)
-   * for round-robin failover across the free tier.
+   * scout (tool-calling loop). Used as a FALLBACK when no Gemini key is set.
+   * Multiple keys can be supplied (comma-separated) for round-robin failover.
    */
   umans: {
     apiKeys: (process.env.UMANS_API_KEYS ?? "")

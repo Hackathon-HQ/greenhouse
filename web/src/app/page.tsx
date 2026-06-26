@@ -7,7 +7,6 @@ import {
   freshBuildSteps,
   initialBuilding,
   initialBuilt,
-  reviewSeeds as mockReviewSeeds,
   type BuildingSeed,
   type BuiltSeed,
   type ReviewSeed,
@@ -84,7 +83,9 @@ function EmptyState({ onReset, loading }: { onReset: () => void; loading: boolea
 }
 
 export default function Home() {
-  const [seeds, setSeeds] = useState<ReviewSeed[]>(mockReviewSeeds);
+  // Only ever show REAL, buildable ideas from the backend (no mock fallback —
+  // approving a mock id 404s on /build). Empty => the "Hunt for more" state.
+  const [seeds, setSeeds] = useState<ReviewSeed[]>([]);
   const [building, setBuilding] = useState<BuildingSeed[]>(initialBuilding);
   const [built, setBuilt] = useState<BuiltSeed[]>(initialBuilt);
   const [index, setIndex] = useState(0);
@@ -124,7 +125,7 @@ export default function Home() {
           setIndex(0);
         }
       } catch (err) {
-        console.warn("[apptok] feed fetch failed, using offline mock seeds:", err);
+        console.warn("[apptok] feed fetch failed; showing empty state:", err);
       }
     })();
     return () => {

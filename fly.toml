@@ -11,6 +11,9 @@ primary_region = "lhr"
   PORT = "8787"
   # Real Cursor builds: the cursor-agent CLI is baked into the image (Dockerfile).
   CURSOR_ENABLED = "true"
+  # High concurrency for many approvals. 16 fits comfortably in 4gb (~200MB/build);
+  # bump toward 20 only if memory headroom allows.
+  MAX_CONCURRENT_BUILDS = "16"
 
 [http_service]
   internal_port = 8787
@@ -23,6 +26,6 @@ primary_region = "lhr"
   min_machines_running = 1
 
 [[vm]]
-  # 2gb so up to 2 concurrent cursor-agent builds don't OOM the box.
-  size = "shared-cpu-2x"
-  memory = "2gb"
+  # 4gb for high concurrency of cursor-agent builds (many approvals at once).
+  size = "shared-cpu-4x"
+  memory = "4gb"

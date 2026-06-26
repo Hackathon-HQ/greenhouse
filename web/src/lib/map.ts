@@ -171,34 +171,29 @@ export function appIdeaToSeed(idea: AppIdea): ReviewSeed {
 }
 
 /** The 3 build-step labels shown on a building card, in order. */
-const STEP_LABELS = [
-  "Building prototype",
-  "Publishing cited.md",
-  "Deploying preview",
-];
+const STEP_LABELS = ["Publishing cited.md", "Deploying preview"];
 
 /**
- * Map a BuildArtifact's status + logs onto the 3 visible build steps.
- *   queued    → nothing done yet
- *   building  → "Building prototype" active; once a log says "wrote"/"succeeded",
- *               "Building prototype" is done and "Publishing cited.md" goes active
+ * Map a BuildArtifact's status + logs onto the visible post-build steps. The
+ * live cursor console is the "building" indicator, so the steps only track the
+ * publish/deploy stages.
+ *   queued/building → nothing done; once a log says "publishing cited.md",
+ *                     that step goes done and "Deploying preview" is active
  *   succeeded → all done
- *   failed/skipped → terminal, nothing marked done
+ *   failed/skipped → nothing marked done
  */
 export function stepsFromArtifact(a: BuildArtifact): BuildStep[] {
   const logText = (a.logs ?? []).join("\n").toLowerCase();
-  const wrote = logText.includes("wrote") || logText.includes("succeeded");
   let doneCount: number;
   switch (a.status) {
-    case "queued":
-      doneCount = 0;
+    case "succeeded":
+      doneCount = STEP_LABELS.length;
       break;
     case "building":
-      doneCount = wrote ? 1 : 0;
+      doneCount =
+        logText.includes("deploy") ? 1 : logText.includes("cited.md") ? 1 : 0;
       break;
-    case "succeeded":
-      doneCount = 3;
-      break;
+    case "queued":
     case "failed":
     case "skipped":
     default:

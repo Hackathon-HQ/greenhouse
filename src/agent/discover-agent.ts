@@ -1,0 +1,376 @@
+/**
+ * Agentic idea discovery, built on the Vercel AI SDK.
+ *
+ * An LLM scout (umans.ai today — see provider.ts) runs a real tool-using agent
+ * loop: it searches the web (Tavily MCP), Reddit (via Tavily) and HackerNews,
+ * and emits structured, evidence-grounded ideas through the `emit_idea` tool as
+ * it goes. A deterministic forced-emit safety net then tops the run up to the
+ * target from the gathered research, so ideas ALWAYS come out even if the scout
+ * over-researches and runs out its time budget.
+ *
+ * Everything flows through tool-calling (which umans supports reliably) — no
+ * fragile JSON/structured-output mode.
+ *
+ * Public entrypoint: {@link runAgenticDiscovery}.
+ */
+import {
+  dynamicTool,
+  generateText,
+  jsonSchema,
+  stepCountIs,
+  tool,
+  type ToolSet,
+} from "ai";
+import { z } from "zod";
+
+import { config } from "../config.js";
+import type { AppIdea, DiscoverInput, SourceName } from "../types.js";
+import { rankIdeas, scoreIdea } from "../pipeline/rank.js";
+import { dedupeIdeas } from "../pipeline/dedupe.js";
+import { providerAvailable, scoutModel } from "./provider.js";
+import { callMcpTool, getTavilyMcp } from "./mcp.js";
+import { runSearchTool } from "./tools.js";
+
+/** True when the agentic path is usable (provider key present + enabled). */
+export function agenticAvailable(): boolean {
+  return config.agent.enabled && providerAvailable();
+}
+
+/** Cap individual tool results so a single huge payload can't blow the context. */
+const MAX_TOOL_RESULT_CHARS = 2200;
+/** Cap the research digest handed to the forced-emit pass. */
+const MAX_DIGEST_CHARS = 14000;
+
+/** Zod schema for one emitted idea — also the `emit_idea` tool's input schema. */
+const ideaSchema = z.object({
+  title: z
+    .string()
+    .describe(
+      "A clear, simple product name — a real word or clean compound. NOT a " +
+        "forced portmanteau (avoid 'SplitSpend', 'CalenDough'). A plain " +
+        "descriptive name like 'Household Splitwise' or 'Month-End Forecaster' is better.",
+    ),
+  pitch: z.string().describe("One-sentence elevator pitch."),
+  description: z
+    .string()
+    .describe(
+      "THE MAIN CONTENT: 2-4 sentences describing the idea — what it is, how it " +
+        "works for the user, and why it's compelling. Concrete and vivid, grounded " +
+        "in the real need. This is the centerpiece shown on the feed card.",
+    ),
+  problem: z.string().describe("The specific user problem it solves."),
+  targetUser: z.string().describe("Who it's for."),
+  mvpFeatures: z.array(z.string()).describe("3-6 concrete MVP features."),
+  suggestedStack: z.array(z.string()).default([]),
+  buildability: z.enum(["trivial", "moderate", "ambitious"]).default("moderate"),
+  tags: z.array(z.string()).default([]),
+  evidence: z
+    .array(z.string())
+    .default([])
+    .describe("Source URLs this idea is grounded in."),
+  sourceQuote: z
+    .string()
+    .describe(
+      "The actual complaint/suggestion from the source, close to its original " +
+        "wording (light cleanup only — do NOT paraphrase into a generic pitch).",
+    ),
+  intent: z
+    .enum(["demand", "hidden-gem"])
+    .describe(
+      "'demand' = people ask for this now; 'hidden-gem' = a strong idea posted " +
+        "years ago that was never built and isn't discussed today.",
+    ),
+});
+type EmittedIdea = z.infer<typeof ideaSchema>;
+
+function slugify(text: string): string {
+  return (
+    text
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, "")
+      .trim()
+      .replace(/\s+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 60) || "untitled"
+  );
+}
+
+/** Infer which sources an idea drew on from its evidence URLs. */
+function inferSources(evidence: string[]): SourceName[] {
+  const set = new Set<SourceName>();
+  for (const url of evidence) {
+    const u = url.toLowerCase();
+    if (u.includes("reddit.com")) set.add("reddit");
+    else if (u.includes("ycombinator")) set.add("hackernews");
+    else if (u.includes("x.com") || u.includes("twitter.com")) set.add("x");
+    else if (u.startsWith("http")) set.add("tavily");
+  }
+  return set.size ? [...set] : ["tavily"];
+}
+
+/** Coerce an emitted idea into a complete, scored-pending AppIdea. */
+function toAppIdea(e: EmittedIdea): AppIdea {
+  const title = (e.title ?? "Untitled").trim();
+  const evidence = (e.evidence ?? []).filter(Boolean);
+  return {
+    id: `idea-${slugify(title)}`,
+    title,
+    pitch: e.pitch ?? "",
+    description: e.description ?? e.pitch ?? "",
+    problem: e.problem ?? "",
+    targetUser: e.targetUser ?? "",
+    mvpFeatures: (e.mvpFeatures ?? []).slice(0, 6),
+    suggestedStack: e.suggestedStack ?? [],
+    buildability: e.buildability ?? "moderate",
+    tags: (e.tags ?? []).slice(0, 8),
+    sourceQuote: e.sourceQuote,
+    intent: e.intent,
+    score: 0,
+    signals: { demand: 0, recency: 0, novelty: 0, feasibility: 0 },
+    sourceSignalIds: evidence,
+    sources: inferSources(evidence),
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function truncate(s: string, max = MAX_TOOL_RESULT_CHARS): string {
+  return s.length > max ? s.slice(0, max) + "\n…[truncated]" : s;
+}
+
+function researchSystemPrompt(target: number): string {
+  // EMPIRICALLY-DERIVED playbook (see src/agent/SEARCH_STRATEGY.md).
+  return [
+    "You are AppTok's Idea Scout: an autonomous agent that discovers fresh, buildable app ideas by triangulating REAL user demand from the live web, Reddit and HackerNews — never from listicles.",
+    "",
+    "## Tools",
+    "- tavily_search: web search. ALWAYS pass search_depth:'advanced'. Its biggest quality lever is include_domains — scope to [\"reddit.com\",\"news.ycombinator.com\",\"indiehackers.com\"] to land on real discussion threads instead of SEO blogspam.",
+    "- tavily_extract: pull the FULL text (incl. comments) of the 2-3 best thread URLs — individual comments are where concrete ideas hide.",
+    "- reddit_search: Reddit threads via web search (Reddit's own API is rate-limited here, so this is the reliable path).",
+    "- hackernews_search: reliable direct source for fresh 'Show HN' launches and evergreen 'Ask HN: what do you wish existed' threads.",
+    "- search_x_posts: real-time demand from X (Twitter) — fast-moving complaints and 'I wish there was an app for…' posts. Use it for what's bubbling up RIGHT NOW.",
+    "- emit_idea: record ONE finished, evidence-grounded idea — call it the MOMENT an idea is grounded; it streams straight to the feed.",
+    "",
+    "Use ALL your sources generously — you have ample budget. Run many searches, go deep with tavily_extract on the best threads, and cross-reference Reddit + HN + X + web before converging. Breadth across sources beats depth on any single one.",
+    "",
+    "## Judge results by CONTENT, not score",
+    "'Top N app ideas 2026' blog listicles score high but are spam — ignore them. Authentic pain-point threads often score LOW yet hold the real signal. Your richest veins: 'what software do you wish existed', 'app that should exist', 'biggest frustration with <category>', 'is there a tool for'.",
+    "",
+    "## Two intents — pursue BOTH",
+    "(A) DEMAND — what people complain about / ask for NOW (pain/wish phrasings, optionally time_range:'month').",
+    "(B) HIDDEN GEMS — strong ideas posted on Reddit/HN years ago, never built, not discussed today (search WITHOUT a recency filter; sanity-check it isn't already mainstream).",
+    "",
+    "## Filter, don't invent",
+    "Capture the actual complaint/suggestion close to the source's own words in `sourceQuote` (light cleanup only — keep the voice). Do NOT abstract a vivid gripe into 'an AI assistant for X'.",
+    "",
+    "## Cadence — search, then EMIT (don't over-search)",
+    "Work in short cycles: 2-3 targeted searches (vary phrasing + niche, cross-reference what multiple people independently ask for), extract the best thread, then EMIT any idea you've grounded. Emit your FIRST idea within your first few steps and keep emitting.",
+    `Emit ${target} distinct ideas via emit_idea, each with intent and evidence URLs. Prefer specific niches over generic 'AI assistant' ideas.`,
+    "",
+    "## Naming + description",
+    "Give each idea a CLEAR, SIMPLE name — a real word or clean compound (e.g. 'Household Splitwise', 'Month-End Forecaster'). Do NOT invent forced portmanteaus ('SplitSpend', 'CalenDough'). The centerpiece is the `description`: 2-4 vivid, concrete sentences explaining what it is, how it works, and why it's compelling — grounded in the real need you found.",
+  ].join("\n");
+}
+
+/**
+ * Run the agentic discovery loop and return ranked, deduped AppIdeas.
+ *
+ * @param input  Optional topics/limit; topics seed the scout's initial focus.
+ * @param onLog  Optional progress sink (tool calls, emitted ideas) for the UI.
+ * @param signal Optional abort signal to cancel a long run.
+ */
+export async function runAgenticDiscovery(
+  input: Partial<DiscoverInput> = {},
+  onLog: (line: string) => void = () => {},
+  signal?: AbortSignal,
+  onIdea?: (idea: AppIdea) => void,
+): Promise<AppIdea[]> {
+  if (!agenticAvailable()) {
+    throw new Error("agentic discovery unavailable (provider not configured)");
+  }
+
+  const topics = input.topics?.length ? input.topics : config.defaultTopics;
+  const target = config.agent.targetIdeas;
+  const model = scoutModel();
+
+  const emitted: EmittedIdea[] = [];
+  const seenTitles = new Set<string>();
+  const researchLog: string[] = [];
+  const record = (label: string, text: string): void => {
+    researchLog.push(`### ${label}\n${text}`);
+  };
+
+  // --- emit_idea tool (shared by the loop and the forced-emit fallback) ---
+  const emitTool = tool({
+    description:
+      "Record ONE concrete, buildable app idea grounded in evidence you actually retrieved. " +
+      "Call this the MOMENT you've grounded an idea — it streams straight to the feed.",
+    inputSchema: ideaSchema,
+    execute: async (idea) => {
+      const key = idea.title.trim().toLowerCase();
+      if (seenTitles.has(key)) {
+        return `"${idea.title}" is a duplicate — skip it and find a different idea.`;
+      }
+      seenTitles.add(key);
+      emitted.push(idea);
+      // Stream the idea to the frontend immediately (scored individually).
+      if (onIdea) {
+        try {
+          onIdea(scoreIdea(toAppIdea(idea)));
+        } catch {
+          /* a faulty consumer must never break the agent */
+        }
+      }
+      onLog(`[agent] emitted ${emitted.length}/${target}: ${idea.title}`);
+      return `Recorded "${idea.title}" (${emitted.length}/${target}) — pushed to the feed.${
+        emitted.length >= target ? " Target reached — you may stop." : " Keep finding more."
+      }`;
+    },
+  });
+
+  // --- search tools: Tavily MCP (dynamic) + Reddit/HN ---
+  const mcp = await getTavilyMcp();
+  const searchTools: ToolSet = {
+    reddit_search: tool({
+      description:
+        "Search Reddit THREADS (via web search) for real pain points & feature requests. " +
+        "Use wish/pain phrasings: 'what software do you wish existed', 'is there a tool for'.",
+      inputSchema: z.object({
+        query: z.string(),
+        limit: z.number().optional(),
+      }),
+      execute: async ({ query, limit }) => {
+        onLog(`[agent] reddit_search(${JSON.stringify(query)})`);
+        const text = truncate(await runSearchTool("reddit_search", query, limit ?? 8));
+        record(`reddit_search: ${query}`, text);
+        return text;
+      },
+    }),
+    hackernews_search: tool({
+      description:
+        "Search HackerNews for fresh 'Show HN' launches and 'Ask HN: what do you wish existed' threads.",
+      inputSchema: z.object({
+        query: z.string(),
+        limit: z.number().optional(),
+      }),
+      execute: async ({ query, limit }) => {
+        onLog(`[agent] hackernews_search(${JSON.stringify(query)})`);
+        const text = truncate(
+          await runSearchTool("hackernews_search", query, limit ?? 8),
+        );
+        record(`hackernews_search: ${query}`, text);
+        return text;
+      },
+    }),
+  };
+
+  // X / Twitter posts — searched via Tavily (scoped to x.com/twitter.com).
+  searchTools.search_x_posts = tool({
+    description:
+      "Search X (Twitter) posts about a topic. Surfaces real-time complaints, " +
+      "feature requests and 'I wish there was an app for…' posts — a fast-moving " +
+      "demand signal the other sources miss.",
+    inputSchema: z.object({
+      query: z.string(),
+      limit: z.number().optional(),
+    }),
+    execute: async ({ query, limit }) => {
+      onLog(`[agent] search_x_posts(${JSON.stringify(query)})`);
+      const text = truncate(await runSearchTool("x_search", query, limit ?? 10));
+      record(`search_x_posts: ${query}`, text);
+      return text;
+    },
+  });
+
+  // Wrap each Tavily MCP tool as a dynamic AI SDK tool.
+  if (mcp) {
+    for (const def of mcp.toolDefs) {
+      const name = def.function.name;
+      searchTools[name] = dynamicTool({
+        description: def.function.description,
+        inputSchema: jsonSchema(def.function.parameters),
+        execute: async (args) => {
+          const a = (args ?? {}) as Record<string, unknown>;
+          onLog(`[agent] ${name}(${JSON.stringify(a.query ?? a.urls ?? "")})`);
+          const text = truncate(await callMcpTool(mcp, name, a));
+          record(`${name}: ${JSON.stringify(a).slice(0, 100)}`, text);
+          return text;
+        },
+      });
+    }
+  }
+  onLog(
+    `[agent] ${mcp ? "Tavily MCP connected" : "Tavily MCP unavailable"}; ${
+      Object.keys(searchTools).length + 1
+    } tools available`,
+  );
+
+  // --- Phase 1: agentic research loop (emit-as-you-go) ---
+  // Soft wall-clock budget so heavy research can't starve idea emission.
+  const budgetController = new AbortController();
+  const timer = setTimeout(
+    () => budgetController.abort(),
+    config.agent.researchBudgetMs,
+  );
+  signal?.addEventListener("abort", () => budgetController.abort(), {
+    once: true,
+  });
+
+  try {
+    await generateText({
+      model,
+      system: researchSystemPrompt(target),
+      prompt:
+        `Discover ${target} buildable app ideas. Seed focus areas: ${topics.join(", ")}. ` +
+        `Search broadly across the web, Reddit and HackerNews, and emit ideas as you ground them.`,
+      tools: { ...searchTools, emit_idea: emitTool },
+      stopWhen: [stepCountIs(config.agent.maxSteps), () => emitted.length >= target],
+      temperature: 0.6,
+      maxOutputTokens: config.agent.maxTokens,
+      abortSignal: budgetController.signal,
+    });
+  } catch (err) {
+    // Budget/abort or transient model error — proceed to the forced-emit net.
+    onLog(
+      `[agent] research loop ended: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+
+  // --- Phase 2: forced-emit safety net (guarantees output) ---
+  if (emitted.length < target && researchLog.length > 0 && !signal?.aborted) {
+    const need = target - emitted.length;
+    const digest = truncate(researchLog.join("\n\n"), MAX_DIGEST_CHARS);
+    onLog(`[agent] forcing synthesis of ${need} more idea(s) from research`);
+    try {
+      await generateText({
+        model,
+        system:
+          "You convert raw research notes into buildable app ideas by calling emit_idea. " +
+          "Filter, don't invent: keep sourceQuote close to the real wording. Ground evidence in URLs from the notes.",
+        prompt:
+          `Research notes gathered from Reddit/HN/web:\n\n${digest}\n\n` +
+          `Emit ${need} more DISTINCT, grounded app ideas now via emit_idea ` +
+          `(set intent to 'demand' or 'hidden-gem'). Do not repeat ideas already covered.`,
+        tools: { emit_idea: emitTool },
+        toolChoice: "required",
+        stopWhen: [stepCountIs(need + 2), () => emitted.length >= target],
+        maxOutputTokens: config.agent.maxTokens,
+      });
+    } catch (err) {
+      onLog(
+        `[agent] forced synthesis failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+
+  onLog(`[agent] done — ${emitted.length} idea(s) emitted`);
+
+  const ideas = dedupeIdeas(emitted.map(toAppIdea));
+  return rankIdeas(ideas).slice(0, config.pipeline.maxIdeas);
+}

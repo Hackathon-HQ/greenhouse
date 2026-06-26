@@ -203,6 +203,11 @@ function openSseStream(req: FastifyRequest, reply: FastifyReply): void {
     "Cache-Control": "no-cache, no-transform",
     Connection: "keep-alive",
     "X-Accel-Buffering": "no",
+    // CRITICAL: this handler writes via reply.raw, bypassing @fastify/cors — so
+    // we must set CORS here or the cross-origin EventSource (Vercel -> Fly) is
+    // blocked and live build/idea updates never reach the deployed frontend.
+    "Access-Control-Allow-Origin": "*",
+    Vary: "Origin",
   });
   // Open the stream and nudge any proxy buffering.
   raw.write(": connected\n\n");

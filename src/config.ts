@@ -151,7 +151,7 @@ export const config = {
      */
     model: process.env.CURSOR_MODEL ?? "auto",
     /** Max wall-clock (ms) a single headless build may run before being killed. */
-    timeoutMs: int(process.env.CURSOR_TIMEOUT_MS, 5 * 60 * 1000),
+    timeoutMs: int(process.env.CURSOR_TIMEOUT_MS, 9 * 60 * 1000),
   },
 
   /** Auto-build settings. */

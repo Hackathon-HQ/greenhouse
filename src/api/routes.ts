@@ -80,18 +80,23 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const idea = store.getIdea(req.params.id);
     if (!idea) return reply.code(404).send({ error: "idea not found" });
 
+    const waiting = buildQueue.length > 0 || buildActive;
     const queued: BuildArtifact = {
       ideaId: idea.id,
       status: "queued",
       files: [],
-      logs: [`Build queued for "${idea.title}"`],
+      logs: [
+        waiting
+          ? `Queued — waiting for the current build to finish…`
+          : `Build queued for "${idea.title}"`,
+      ],
       startedAt: new Date().toISOString(),
     };
     store.setBuild(queued);
 
-    // Fire-and-forget: run the build in the background, streaming progress
-    // through the store (which fans out to SSE via onBuild).
-    void runBuild(idea, queued);
+    // Serialize builds: only ONE cursor-agent runs at a time so concurrent
+    // approvals can't OOM the box. Extra builds wait in the queue.
+    enqueueBuild(idea, queued);
 
     return reply.code(202).send(queued);
   });
@@ -130,6 +135,30 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     // Keep the request open; reply is driven manually via reply.raw.
     return reply;
   });
+}
+
+// --- Serial build queue ---------------------------------------------------
+// Cursor builds are run ONE AT A TIME. Two concurrent cursor-agent processes
+// (plus node + tavily-mcp) OOM the 1 GB VM, which restarts and loses state.
+const buildQueue: Array<{ idea: AppIdea; queued: BuildArtifact }> = [];
+let buildActive = false;
+
+function enqueueBuild(idea: AppIdea, queued: BuildArtifact): void {
+  buildQueue.push({ idea, queued });
+  void drainBuildQueue();
+}
+
+async function drainBuildQueue(): Promise<void> {
+  if (buildActive) return;
+  buildActive = true;
+  try {
+    let next: { idea: AppIdea; queued: BuildArtifact } | undefined;
+    while ((next = buildQueue.shift())) {
+      await runBuild(next.idea, next.queued);
+    }
+  } finally {
+    buildActive = false;
+  }
 }
 
 /**

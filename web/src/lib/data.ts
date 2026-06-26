@@ -34,6 +34,8 @@ export type BuiltSeed = {
   title: string;
   age: string;
   meta: string;
+  /** Live preview URL once the auto-build has deployed one. */
+  previewUrl?: string;
 };
 
 /** Real favicons, pulled from each source's domain (like ChatGPT citations). */

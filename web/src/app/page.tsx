@@ -7,16 +7,29 @@ import {
   freshBuildSteps,
   initialBuilding,
   initialBuilt,
-  reviewSeeds,
+  reviewSeeds as mockReviewSeeds,
   type BuildingSeed,
   type BuiltSeed,
+  type ReviewSeed,
 } from "@/lib/data";
+import {
+  build as buildIdea,
+  discover,
+  getFeed,
+  subscribeStream,
+  type AppIdea,
+  type BuildArtifact,
+} from "@/lib/api";
+import { appIdeaToSeed, isTerminalBuild, signalCountFor, stepsFromArtifact } from "@/lib/map";
 import { Sidebar } from "@/components/sidebar";
 import { SeedDetail } from "@/components/seed-detail";
 import { EvidencePanel } from "@/components/evidence-panel";
 import { ActionBar } from "@/components/action-bar";
 
 type Decision = "approve" | "deny";
+
+/** Lightweight per-idea metadata used to render building/built cards. */
+type IdeaMeta = { title: string; confidence: number; signalCount: number };
 
 const cardVariants = {
   enter: { opacity: 0, y: 14, scale: 0.99 },
@@ -29,46 +42,152 @@ const cardVariants = {
   }),
 };
 
-function EmptyState({ onReset }: { onReset: () => void }) {
+function EmptyState({ onReset, loading }: { onReset: () => void; loading: boolean }) {
   return (
     <div className="flex flex-col items-center gap-4 px-10 text-center">
       <div className="flex size-12 items-center justify-center rounded-2xl border border-border bg-soft">
-        <Sparkles className="size-5 text-ink" />
+        <Sparkles className={`size-5 text-ink ${loading ? "animate-pulse" : ""}`} />
       </div>
       <div className="flex flex-col gap-1.5">
         <h2 className="text-[20px] font-semibold tracking-[-0.02em] text-ink">
-          You&rsquo;re all caught up
+          {loading ? "Hunting the open web…" : "You’re all caught up"}
         </h2>
         <p className="max-w-[320px] text-[14px] leading-6 text-sub">
-          Every seed in the queue has been reviewed. Hunt the open web for fresh app ideas.
+          {loading
+            ? "Scouting Reddit, X, Hacker News and the open web for fresh app ideas. New seeds will appear as they’re found."
+            : "Every seed in the queue has been reviewed. Hunt the open web for fresh app ideas."}
         </p>
       </div>
       <button
         type="button"
         onClick={onReset}
-        className="mt-1 flex h-10 items-center gap-2 rounded-[10px] bg-accent px-4 text-[13.5px] font-medium text-white transition-transform active:scale-95"
+        disabled={loading}
+        className="mt-1 flex h-10 items-center gap-2 rounded-[10px] bg-accent px-4 text-[13.5px] font-medium text-white transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        <Sparkles className="size-4" />
-        Hunt for more seeds
+        <Sparkles className={`size-4 ${loading ? "animate-spin" : ""}`} />
+        {loading ? "Hunting…" : "Hunt for more seeds"}
       </button>
     </div>
   );
 }
 
 export default function Home() {
+  const [seeds, setSeeds] = useState<ReviewSeed[]>(mockReviewSeeds);
   const [building, setBuilding] = useState<BuildingSeed[]>(initialBuilding);
-  const [built] = useState<BuiltSeed[]>(initialBuilt);
+  const [built, setBuilt] = useState<BuiltSeed[]>(initialBuilt);
   const [index, setIndex] = useState(0);
   const [direction, setDirection] = useState(1);
   const [flash, setFlash] = useState<Decision | null>(null);
+  const [hunting, setHunting] = useState(false);
   const lock = useRef(false);
+  /** id -> meta, so build SSE events can render cards without the seed in view. */
+  const ideaMeta = useRef<Map<string, IdeaMeta>>(new Map());
 
-  const current = reviewSeeds[index];
+  const current = seeds[index];
+
+  // Remember enough about each idea to render building/built cards later.
+  const rememberIdeas = useCallback((ideas: AppIdea[]) => {
+    for (const idea of ideas) {
+      ideaMeta.current.set(idea.id, {
+        title: idea.title,
+        confidence: Math.round((idea.score ?? 0) * 100),
+        signalCount: signalCountFor(idea),
+      });
+    }
+  }, []);
+
+  // Initial feed load (with offline fallback to the static mock seeds).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const ideas = await getFeed();
+        if (cancelled) return;
+        rememberIdeas(ideas);
+        if (ideas.length) {
+          setSeeds(ideas.map(appIdeaToSeed));
+          setIndex(0);
+        }
+      } catch (err) {
+        console.warn("[apptok] feed fetch failed, using offline mock seeds:", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [rememberIdeas]);
+
+  // Apply a build artifact to the building/built lists.
+  const applyBuild = useCallback((a: BuildArtifact) => {
+    const meta = ideaMeta.current.get(a.ideaId);
+    const title = meta?.title ?? a.ideaId;
+    const sourcesN = meta?.signalCount ?? 0;
+    const conf = meta?.confidence ?? 0;
+
+    if (a.status === "succeeded") {
+      setBuilding((prev) => prev.filter((b) => b.id !== a.ideaId));
+      setBuilt((prev) => {
+        if (prev.some((b) => b.id === a.ideaId)) {
+          return prev.map((b) =>
+            b.id === a.ideaId ? { ...b, previewUrl: a.previewUrl ?? b.previewUrl } : b,
+          );
+        }
+        return [
+          {
+            id: a.ideaId,
+            title,
+            age: "now",
+            meta: `${sourcesN} sources · ${conf}% · Built`,
+            previewUrl: a.previewUrl,
+          },
+          ...prev,
+        ];
+      });
+      return;
+    }
+
+    // queued / building / failed / skipped -> reflect on a building card.
+    const steps = stepsFromArtifact(a);
+    setBuilding((prev) => {
+      const idx = prev.findIndex((b) => b.id === a.ideaId);
+      if (idx === -1) {
+        const label = isTerminalBuild(a.status) ? a.status : "Building";
+        return [
+          {
+            id: a.ideaId,
+            title,
+            age: "now",
+            meta: `${sourcesN} sources · ${conf}% · ${label[0].toUpperCase()}${label.slice(1)}`,
+            steps,
+          },
+          ...prev,
+        ];
+      }
+      return prev.map((b) => (b.id === a.ideaId ? { ...b, steps } : b));
+    });
+  }, []);
+
+  // Live stream: new ideas refill the queue; build events drive the sidebar.
+  useEffect(() => {
+    const unsubscribe = subscribeStream({
+      onIdea: (ideas) => {
+        if (ideas.length) setHunting(false);
+        rememberIdeas(ideas);
+        setSeeds((prev) => {
+          const known = new Set(prev.map((s) => s.id));
+          const fresh = ideas.filter((i) => !known.has(i.id)).map(appIdeaToSeed);
+          return fresh.length ? [...prev, ...fresh] : prev;
+        });
+      },
+      onBuild: applyBuild,
+    });
+    return unsubscribe;
+  }, [applyBuild, rememberIdeas]);
 
   const decide = useCallback(
     (kind: Decision) => {
       if (lock.current) return;
-      const seed = reviewSeeds[index];
+      const seed = seeds[index];
       if (!seed) return;
 
       lock.current = true;
@@ -81,27 +200,48 @@ export default function Home() {
       setTimeout(() => setFlash(null), 220);
 
       if (kind === "approve") {
-        setBuilding((prev) => [
-          {
-            id: `build-${seed.id}-${index}`,
-            title: seed.title,
-            age: "now",
-            meta: `${seed.sources.length} sources · ${seed.confidence}% · Building`,
-            steps: freshBuildSteps(),
-          },
-          ...prev,
-        ]);
+        // Optimistic building card keyed by the idea id so build SSE matches it.
+        setBuilding((prev) => {
+          if (prev.some((b) => b.id === seed.id)) return prev;
+          return [
+            {
+              id: seed.id,
+              title: seed.title,
+              age: "now",
+              meta: `${seed.sources.length} sources · ${seed.confidence}% · Building`,
+              steps: freshBuildSteps(),
+            },
+            ...prev,
+          ];
+        });
+        // Kick off the real build; queued artifact + SSE drive the steps.
+        buildIdea(seed.id)
+          .then(applyBuild)
+          .catch((err) => console.warn("[apptok] build request failed:", err));
       }
 
       setIndex((i) => i + 1);
     },
-    [index],
+    [seeds, index, applyBuild],
   );
 
   const reset = useCallback(() => {
     setDirection(1);
     setIndex(0);
-  }, []);
+    // Hunt the open web for more seeds; results stream back via SSE.
+    setHunting(true);
+    discover()
+      .then((ideas) => {
+        rememberIdeas(ideas);
+        setSeeds((prev) => {
+          const known = new Set(prev.map((s) => s.id));
+          const fresh = ideas.filter((i) => !known.has(i.id)).map(appIdeaToSeed);
+          return fresh.length ? [...prev, ...fresh] : prev;
+        });
+      })
+      .catch((err) => console.warn("[apptok] discover failed:", err))
+      .finally(() => setHunting(false));
+  }, [rememberIdeas]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -152,7 +292,7 @@ export default function Home() {
                 transition={{ duration: 0.34, ease: [0.16, 1, 0.3, 1] }}
                 className="flex min-h-0 flex-1 flex-col items-center justify-center"
               >
-                <EmptyState onReset={reset} />
+                <EmptyState onReset={reset} loading={hunting} />
               </motion.div>
             )}
           </AnimatePresence>

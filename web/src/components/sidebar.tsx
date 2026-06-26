@@ -72,22 +72,34 @@ function ActionChip({
   icon: Icon,
   label,
   strong,
+  href,
 }: {
   icon: typeof Eye;
   label: string;
   strong?: boolean;
+  href?: string;
 }) {
-  return (
-    <button
-      type="button"
-      className={`flex h-[26px] items-center gap-[5px] rounded-[7px] border bg-app px-[9px] transition-colors hover:bg-soft ${
-        strong ? "border-border-strong" : "border-border"
-      }`}
-    >
+  const className = `flex h-[26px] items-center gap-[5px] rounded-[7px] border bg-app px-[9px] transition-colors hover:bg-soft ${
+    strong ? "border-border-strong" : "border-border"
+  }`;
+  const inner = (
+    <>
       <Icon className={`size-[13px] ${strong ? "text-ink" : "text-sub"}`} strokeWidth={2} />
       <span className={`text-[11.5px] font-medium ${strong ? "text-ink" : "text-sub"}`}>
         {label}
       </span>
+    </>
+  );
+  if (href) {
+    return (
+      <a href={href} target="_blank" rel="noreferrer" className={className}>
+        {inner}
+      </a>
+    );
+  }
+  return (
+    <button type="button" className={className}>
+      {inner}
     </button>
   );
 }
@@ -98,7 +110,7 @@ function BuiltCard({ seed }: { seed: BuiltSeed }) {
       <CardHead title={seed.title} age={seed.age} />
       <span className="mt-[10px] font-mono text-[11px] tracking-[-0.01em] text-sub">{seed.meta}</span>
       <div className="mt-[11px] flex flex-wrap items-center gap-1.5">
-        <ActionChip icon={Eye} label="View" strong />
+        <ActionChip icon={Eye} label="View" strong href={seed.previewUrl} />
         <ActionChip icon={Download} label="Export" />
         <ActionChip icon={Code} label="Open in Cursor" />
       </div>

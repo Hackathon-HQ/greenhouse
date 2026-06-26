@@ -30,7 +30,9 @@ function SourceItem({ source, first }: { source: Source; first: boolean }) {
           </span>
           <span className="shrink-0 font-mono text-[10.5px] text-muted">{source.age}</span>
         </div>
-        <p className="text-[13px] leading-[19px] tracking-[-0.005em] text-ink">{source.quote}</p>
+        {source.quote ? (
+          <p className="text-[13px] leading-[19px] tracking-[-0.005em] text-ink">{source.quote}</p>
+        ) : null}
         <span className="truncate font-mono text-[10.5px] text-muted">{source.domain}</span>
       </div>
     </a>

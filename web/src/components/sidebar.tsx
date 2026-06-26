@@ -56,7 +56,13 @@ function CardShell({
 function CardHead({ title, age }: { title: string; age: string }) {
   return (
     <div className="flex items-center justify-between gap-2">
-      <span className="text-[13.5px] font-medium tracking-[-0.005em] text-ink">{title}</span>
+      <span className="flex min-w-0 items-center gap-[7px]">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/seed.svg" alt="" width={15} height={16} className="shrink-0" />
+        <span className="truncate text-[13.5px] font-medium tracking-[-0.005em] text-ink">
+          {title}
+        </span>
+      </span>
       <span className="shrink-0 font-mono text-[10.5px] text-muted">{age}</span>
     </div>
   );

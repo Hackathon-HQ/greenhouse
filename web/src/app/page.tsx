@@ -133,7 +133,6 @@ export default function Home() {
     const meta = ideaMeta.current.get(a.ideaId);
     const title = meta?.title ?? a.ideaId;
     const sourcesN = meta?.signalCount ?? 0;
-    const conf = meta?.confidence ?? 0;
 
     if (a.status === "succeeded") {
       // Prefer the live Vercel deployment; else the hosted preview route (the
@@ -155,7 +154,7 @@ export default function Home() {
             id: a.ideaId,
             title,
             age: "now",
-            meta: `${sourcesN} sources · ${conf}% · Built`,
+            meta: `${sourcesN} sources · Built`,
             previewUrl: hostedPreview,
             workdir: a.workdir,
             logs: a.logs,
@@ -178,7 +177,7 @@ export default function Home() {
             id: a.ideaId,
             title,
             age: "now",
-            meta: `${sourcesN} sources · ${conf}% · ${label[0].toUpperCase()}${label.slice(1)}`,
+            meta: `${sourcesN} sources · ${label[0].toUpperCase()}${label.slice(1)}`,
             log,
             logs: a.logs,
             steps,
@@ -220,7 +219,9 @@ export default function Home() {
         lock.current = false;
       }, 360);
 
-      setDirection(kind === "approve" ? 1 : -1);
+      // Match the action bar layout: Approve is the LEFT button → card flies
+      // left; Deny is the RIGHT button → card flies right.
+      setDirection(kind === "approve" ? -1 : 1);
       setFlash(kind);
       setTimeout(() => setFlash(null), 220);
 
@@ -233,7 +234,7 @@ export default function Home() {
               id: seed.id,
               title: seed.title,
               age: "now",
-              meta: `${seed.sources.length} sources · ${seed.confidence}% · Building`,
+              meta: `${seed.sources.length} sources · Building`,
               steps: freshBuildSteps(),
             },
             ...prev,
@@ -277,10 +278,10 @@ export default function Home() {
       ) {
         return;
       }
-      if (e.key === "a" || e.key === "A" || e.key === "ArrowRight") {
+      if (e.key === "a" || e.key === "A" || e.key === "ArrowLeft") {
         e.preventDefault();
         decide("approve");
-      } else if (e.key === "d" || e.key === "D" || e.key === "ArrowLeft") {
+      } else if (e.key === "d" || e.key === "D" || e.key === "ArrowRight") {
         e.preventDefault();
         decide("deny");
       }

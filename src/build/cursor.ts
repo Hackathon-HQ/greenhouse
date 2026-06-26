@@ -24,6 +24,7 @@ import { pathToFileURL } from "node:url";
 
 import { config } from "../config.js";
 import type { AppIdea, BuildArtifact } from "../types.js";
+import { observe } from "../observe.js";
 import {
   deployToVercel,
   vercelDeployAvailable,
@@ -58,6 +59,7 @@ function pushLog(
   line: string,
 ): void {
   artifact.logs.push(line);
+  observe(`build:${artifact.ideaId}`, line);
   try {
     onLog(line);
   } catch {
@@ -130,8 +132,10 @@ function buildPrompt(idea: AppIdea): string {
     `Problem it solves: ${idea.problem}`,
     `Target user: ${idea.targetUser}`,
     ``,
-    `Implement these MVP features so they actually work (real interactivity, not mockups):`,
+    `Build the COMPLETE, genuinely-working product — NOT a landing page, marketing page, or "coming soon" stub. Every one of these features must actually function end-to-end (real state, real logic, real interactivity that a user can use right now):`,
     features,
+    ``,
+    `This is the actual app, built ground-up — someone should be able to open it and really use it. Depth of working functionality matters more than how it looks.`,
     ``,
     `HARD CONSTRAINTS — follow exactly:`,
     `1. Produce a SINGLE file named "index.html" in the current directory.`,
@@ -302,6 +306,9 @@ function runCursorAgent(
         outBuf = outBuf.slice(nl + 1);
         nl = outBuf.indexOf("\n");
         if (!raw.length) continue;
+        // Full-fidelity: record the RAW cursor-agent stream event (reasoning,
+        // tool calls, everything) to the observability log.
+        observe("cursor:raw", idea.id, raw);
         const { line, result } = renderStreamEvent(raw);
         if (result) resultIsError = result.isError;
         if (line) pushLog(artifact, onLog, `[cursor] ${line}`);

@@ -24,6 +24,7 @@ import {
 import { z } from "zod";
 
 import { config } from "../config.js";
+import { observe } from "../observe.js";
 import type { AppIdea, DiscoverInput, SourceName } from "../types.js";
 import { rankIdeas, scoreIdea } from "../pipeline/rank.js";
 import { dedupeIdeas } from "../pipeline/dedupe.js";
@@ -208,7 +209,7 @@ function researchSystemPrompt(target: number): string {
     `Don't over-research before producing anything — emit your first idea early and keep emitting as you ground them. Aim for ${target} distinct ideas, each with its intent and evidence URLs. Favor specific niches over generic ideas.`,
     "",
     "## Naming + description",
-    "Clear, simple names (a real word or clean compound like 'Household Splitwise'), not forced portmanteaus. The centerpiece is `description`: 2-4 vivid, concrete sentences on what it is, how it works, and why it's compelling — grounded in the real need.",
+    "Clear, simple names (a real word or clean compound like 'Household Splitwise'), not forced portmanteaus. VARY the names across ideas — don't reuse the same leading word/prefix (e.g. avoid every title being 'Focus Tool …' or 'Local …'); each name should feel distinct. The centerpiece is `description`: 2-4 vivid, concrete sentences on what it is, how it works, and why it's compelling — grounded in the real need.",
   ].join("\n");
 }
 
@@ -262,6 +263,7 @@ export async function runAgenticDiscovery(
         }
       }
       onLog(`[agent] emitted ${emitted.length}/${target}: ${idea.title}`);
+      observe("idea", idea.title, idea);
       return `Recorded "${idea.title}" (${emitted.length}/${target}) — pushed to the feed.${
         emitted.length >= target ? " Target reached — you may stop." : " Keep finding more."
       }`;
@@ -475,6 +477,13 @@ export async function runAgenticDiscovery(
       temperature: 0.6,
       maxOutputTokens: config.agent.maxTokens,
       abortSignal: budgetController.signal,
+      onStepFinish: (s) => {
+        // Full reasoning trace: the scout's thinking + which tools it called.
+        if (s.text?.trim()) observe("agent:reasoning", "scout", s.text.trim());
+        for (const tc of s.toolCalls ?? []) {
+          observe("agent:tool", tc.toolName, (tc as { input?: unknown }).input);
+        }
+      },
     });
   } catch (err) {
     // Budget/abort or transient model error — proceed to the forced-emit net.
@@ -519,5 +528,16 @@ export async function runAgenticDiscovery(
   onLog(`[agent] done — ${emitted.length} idea(s) emitted`);
 
   const ideas = dedupeIdeas(emitted.map(toAppIdea));
-  return rankIdeas(ideas).slice(0, config.pipeline.maxIdeas);
+  // Guarantee unique ids so distinct ideas with the same slug don't collide
+  // (which made approving one show as "already built").
+  const seenIds = new Set<string>();
+  for (const idea of ideas) {
+    let id = idea.id;
+    for (let n = 2; seenIds.has(id); n++) id = `${idea.id}-${n}`;
+    idea.id = id;
+    seenIds.add(id);
+  }
+  const ranked = rankIdeas(ideas).slice(0, config.pipeline.maxIdeas);
+  observe("discover", `done — ${ranked.length} ideas`, ranked.map((i) => i.title));
+  return ranked;
 }

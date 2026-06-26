@@ -16,6 +16,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { AppIdea, BuildArtifact } from "../types.js";
 import { config } from "../config.js";
 import { store } from "../store/store.js";
+import { readObserveLog } from "../observe.js";
 import { runDiscovery } from "../pipeline/discover.js";
 import { buildIdea } from "../build/cursor.js";
 
@@ -41,6 +42,14 @@ interface IdeaIdParams {
  */
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/health", async () => ({ ok: true }));
+
+  // Full observability log (discovery reasoning, cursor stream, builds, deploys).
+  app.get<{ Querystring: { n?: string } }>("/api/logs", async (req, reply) => {
+    const n = Math.min(Math.max(Number(req.query.n) || 800, 1), 5000);
+    return reply
+      .header("Content-Type", "text/plain; charset=utf-8")
+      .send(await readObserveLog(n));
+  });
 
   app.get<{ Querystring: FeedQuery }>("/api/feed", async (req) => {
     const { tag } = req.query;

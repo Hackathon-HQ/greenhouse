@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+@theme {
+  /* Surfaces */
+  --color-app: #ffffff;
+  --color-soft: #fafafa;
+  --color-border: #e5e7eb;
+  --color-border-strong: #d4d4d8;
+
+  /* Text */
+  --color-ink: #18181b;
+  --color-sub: #71717a;
+  --color-muted: #a1a1aa;
+
+  /* Accent + semantic */
+  --color-accent: #111827;
+  --color-approve: #059669;
+  --color-approve-soft: #dcfce7;
+  --color-deny: #dc2626;
+  --color-deny-soft: #fee2e2;
+
+  /* Brand favicons */
+  --color-reddit: #ff4500;
+  --color-x: #000000;
+  --color-github: #181717;
+  --color-hn: #ff6600;
+
+  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--color-app);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-synthesis: none;
+}
+
+/* Thin, calm scrollbars for the scrolling columns */
+.scroll-area {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+.scroll-area::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scroll-area::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 999px;
+}
+.scroll-area::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-strong);
+}

@@ -1,0 +1,137 @@
+import { Check, Code, Download, Eye } from "lucide-react";
+import type { BuildingSeed, BuiltSeed } from "@/lib/data";
+
+function SectionLabel({ label, count }: { label: string; count: number }) {
+  return (
+    <div className="flex items-center gap-1.5 px-1.5 pb-0.5">
+      <span className="font-mono text-[10.5px] font-medium tracking-[0.09em] text-ink">
+        {label}
+      </span>
+      <span className="font-mono text-[10.5px] font-medium tracking-[0.04em] text-muted">
+        {count}
+      </span>
+    </div>
+  );
+}
+
+function CardShell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col rounded-xl border border-border bg-app px-[13px] py-3 transition-colors duration-150 hover:border-border-strong">
+      {children}
+    </div>
+  );
+}
+
+function CardHead({ title, age }: { title: string; age: string }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-[13.5px] font-medium tracking-[-0.005em] text-ink">{title}</span>
+      <span className="shrink-0 font-mono text-[10.5px] text-muted">{age}</span>
+    </div>
+  );
+}
+
+function BuildingCard({ seed }: { seed: BuildingSeed }) {
+  const activeIndex = seed.steps.findIndex((s) => !s.done);
+  return (
+    <CardShell>
+      <CardHead title={seed.title} age={seed.age} />
+      <span className="mt-[9px] font-mono text-[11px] tracking-[-0.01em] text-sub">{seed.meta}</span>
+      <div className="mt-[11px] flex flex-col gap-[7px]">
+        {seed.steps.map((step, i) => {
+          const active = i === activeIndex;
+          return (
+            <div key={step.label} className="flex items-center gap-[9px]">
+              {step.done ? (
+                <span className="flex size-[15px] shrink-0 items-center justify-center rounded-[5px] bg-ink">
+                  <Check className="size-2.5 text-white" strokeWidth={3} />
+                </span>
+              ) : (
+                <span
+                  className={`size-[15px] shrink-0 rounded-[5px] border-[1.5px] ${
+                    active ? "animate-pulse border-ink" : "border-border-strong"
+                  }`}
+                />
+              )}
+              <span
+                className={`text-[11.5px] ${
+                  step.done ? "text-sub" : active ? "text-ink" : "text-muted"
+                }`}
+              >
+                {step.label}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </CardShell>
+  );
+}
+
+function ActionChip({
+  icon: Icon,
+  label,
+  strong,
+}: {
+  icon: typeof Eye;
+  label: string;
+  strong?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      className={`flex h-[26px] items-center gap-[5px] rounded-[7px] border bg-app px-[9px] transition-colors hover:bg-soft ${
+        strong ? "border-border-strong" : "border-border"
+      }`}
+    >
+      <Icon className={`size-[13px] ${strong ? "text-ink" : "text-sub"}`} strokeWidth={2} />
+      <span className={`text-[11.5px] font-medium ${strong ? "text-ink" : "text-sub"}`}>
+        {label}
+      </span>
+    </button>
+  );
+}
+
+function BuiltCard({ seed }: { seed: BuiltSeed }) {
+  return (
+    <CardShell>
+      <CardHead title={seed.title} age={seed.age} />
+      <span className="mt-[10px] font-mono text-[11px] tracking-[-0.01em] text-sub">{seed.meta}</span>
+      <div className="mt-[11px] flex flex-wrap items-center gap-1.5">
+        <ActionChip icon={Eye} label="View" strong />
+        <ActionChip icon={Download} label="Export" />
+        <ActionChip icon={Code} label="Open in Cursor" />
+      </div>
+    </CardShell>
+  );
+}
+
+export function Sidebar({
+  building,
+  built,
+}: {
+  building: BuildingSeed[];
+  built: BuiltSeed[];
+}) {
+  return (
+    <aside className="flex h-full w-[320px] shrink-0 flex-col border-r border-border bg-soft">
+      <div className="flex shrink-0 flex-col gap-3 border-b border-border px-3.5 pt-4 pb-3.5">
+        <span className="text-[15px] font-semibold tracking-[-0.01em] text-ink">Seeds</span>
+      </div>
+      <div className="scroll-area flex flex-1 flex-col gap-5 overflow-y-auto px-3.5 py-4">
+        <section className="flex flex-col gap-1.5">
+          <SectionLabel label="BUILDING" count={building.length} />
+          {building.map((seed) => (
+            <BuildingCard key={seed.id} seed={seed} />
+          ))}
+        </section>
+        <section className="flex flex-col gap-1.5">
+          <SectionLabel label="BUILT" count={built.length} />
+          {built.map((seed) => (
+            <BuiltCard key={seed.id} seed={seed} />
+          ))}
+        </section>
+      </div>
+    </aside>
+  );
+}

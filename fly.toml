@@ -1,0 +1,25 @@
+# Fly.io config for the AppTok backend.
+# Secrets (TAVILY_API_KEY, UMANS_API_KEYS, YOUTUBE_API_KEY, etc.) are set via
+# `fly secrets set` — never committed here.
+app = "apptok"
+primary_region = "lhr"
+
+[build]
+
+[env]
+  HOST = "0.0.0.0"
+  PORT = "8787"
+  # Cursor auto-build is a local-dev feature (cursor-agent CLI isn't in the
+  # container); the deterministic scaffold fallback handles builds here.
+  CURSOR_ENABLED = "false"
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"

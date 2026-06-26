@@ -24,6 +24,11 @@ import { pathToFileURL } from "node:url";
 
 import { config } from "../config.js";
 import type { AppIdea, BuildArtifact } from "../types.js";
+import {
+  deployToVercel,
+  vercelDeployAvailable,
+  type DeployFile,
+} from "./vercel-deploy.js";
 
 /**
  * PATH for the spawned cursor-agent process. When the backend is launched via
@@ -604,6 +609,38 @@ export async function buildIdea(
       log,
       `[build] succeeded with ${artifact.files.length} file(s)`,
     );
+
+    // Deploy the built MVP to Vercel for a real public URL (best-effort).
+    if (vercelDeployAvailable() && producedFiles.length > 0) {
+      pushLog(artifact, log, "[deploy] deploying MVP to Vercel…");
+      try {
+        const textExt = /\.(html?|css|js|mjs|json|md|txt|svg)$/i;
+        const deployFiles: DeployFile[] = [];
+        for (const rel of producedFiles.slice(0, 30)) {
+          if (!textExt.test(rel)) continue;
+          deployFiles.push({
+            path: rel,
+            content: await fs.readFile(path.join(dir, rel), "utf8"),
+          });
+        }
+        const url = await deployToVercel(
+          `apptok-${idea.id}`.slice(0, 52),
+          deployFiles,
+        );
+        if (url) {
+          artifact.deployUrl = url;
+          pushLog(artifact, log, `[deploy] live at ${url}`);
+        } else {
+          pushLog(artifact, log, "[deploy] Vercel deploy unavailable — using local preview");
+        }
+      } catch (err) {
+        pushLog(
+          artifact,
+          log,
+          `[deploy] error: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
   } catch (err) {
     artifact.status = "failed";
     artifact.error = err instanceof Error ? err.message : String(err);

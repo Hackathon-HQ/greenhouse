@@ -146,6 +146,8 @@ export interface BuildArtifact {
   workdir?: string;
   /** Local dev URL if the build could be served. */
   previewUrl?: string;
+  /** Public Vercel URL once the built MVP is deployed live. */
+  deployUrl?: string;
   /** Relative paths of files the build produced. */
   files: string[];
   /** Human-readable build log lines (streamed to the UI). */

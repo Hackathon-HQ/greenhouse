@@ -140,9 +140,11 @@ export default function Home() {
     const conf = meta?.confidence ?? 0;
 
     if (a.status === "succeeded") {
-      // "View" must hit the HOSTED preview route — the artifact's previewUrl is a
-      // server-side file:// path a browser can't open.
-      const hostedPreview = `${apiBaseUrl()}/api/builds/${encodeURIComponent(a.ideaId)}/preview`;
+      // Prefer the live Vercel deployment; else the hosted preview route (the
+      // artifact's previewUrl is a server-side file:// path a browser can't open).
+      const hostedPreview =
+        a.deployUrl ||
+        `${apiBaseUrl()}/api/builds/${encodeURIComponent(a.ideaId)}/preview`;
       setBuilding((prev) => prev.filter((b) => b.id !== a.ideaId));
       setBuilt((prev) => {
         if (prev.some((b) => b.id === a.ideaId)) {

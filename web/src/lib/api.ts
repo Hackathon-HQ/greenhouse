@@ -51,6 +51,7 @@ export interface BuildArtifact {
   status: BuildStatus;
   workdir?: string;
   previewUrl?: string;
+  deployUrl?: string;
   files: string[];
   logs: string[];
   error?: string;

@@ -176,35 +176,55 @@ function renderStreamEvent(raw: string): {
       return { line: null };
     case "tool_call": {
       const tc = ev.tool_call ?? {};
-      const edit = tc.editToolCall;
-      const shell = tc.shellToolCall ?? tc.bashToolCall;
-      if (edit) {
-        const p = edit.args?.path ?? "(file)";
-        const name = path.basename(String(p));
-        if (ev.subtype === "started") return { line: `editing ${name}…` };
-        const added = edit.args?.result?.success?.linesAdded;
-        return {
-          line: `wrote ${name}${added != null ? ` (+${added} lines)` : ""}`,
-        };
+      const key = Object.keys(tc)[0] ?? "tool";
+      const call = (tc[key] ?? {}) as { args?: Record<string, any> };
+      const args = call.args ?? {};
+      const started = ev.subtype === "started";
+
+      // File edits — show the file + lines written on completion.
+      if (key === "editToolCall") {
+        const f = path.basename(String(args.path ?? "file"));
+        if (started) return { line: `editing ${f}…` };
+        const added = args.result?.success?.linesAdded;
+        return { line: `wrote ${f}${added != null ? ` (+${added} lines)` : ""}` };
       }
-      if (shell) {
-        const cmd = shell.args?.command ?? shell.args?.cmd ?? "(command)";
-        if (ev.subtype === "started")
-          return { line: `running: ${String(cmd).slice(0, 120)}` };
+      // Shell commands.
+      if (key === "shellToolCall" || key === "bashToolCall") {
+        if (started)
+          return { line: `running: ${String(args.command ?? args.cmd ?? "").slice(0, 140)}` };
         return { line: null };
       }
-      // Unknown tool — only log the start so we don't double up.
-      return { line: ev.subtype === "started" ? `tool: ${Object.keys(tc)[0] ?? "?"}` : null };
+      // Any other tool (read, glob, grep/search, ls, web…): surface it with its
+      // most relevant argument so the stream shows what the agent is doing.
+      if (started) {
+        const verb = key.replace(/ToolCall$/, "");
+        const target =
+          args.path ??
+          args.file ??
+          args.query ??
+          args.pattern ??
+          args.url ??
+          args.command ??
+          "";
+        const t = String(target).replace(/\s+/g, " ").slice(0, 100);
+        return { line: `${verb}${t ? ` ${t}` : ""}…` };
+      }
+      return { line: null };
     }
     case "assistant": {
       const parts = ev.message?.content;
       if (Array.isArray(parts)) {
-        const text = parts
-          .filter((p: any) => p?.type === "text")
-          .map((p: any) => p.text)
-          .join(" ")
-          .trim();
-        return { line: text ? `agent: ${text}` : null };
+        const grab = (...types: string[]) =>
+          parts
+            .filter((p: any) => types.includes(p?.type))
+            .map((p: any) => p.text ?? p.thinking ?? "")
+            .join(" ")
+            .replace(/\s+/g, " ")
+            .trim();
+        const text = grab("text");
+        if (text) return { line: `agent: ${text.slice(0, 600)}` };
+        const thinking = grab("thinking", "reasoning");
+        if (thinking) return { line: `thinking: ${thinking.slice(0, 600)}` };
       }
       return { line: null };
     }

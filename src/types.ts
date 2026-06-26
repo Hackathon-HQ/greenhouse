@@ -104,11 +104,28 @@ export interface AppIdea {
    *    discussed today.
    */
   intent?: "demand" | "hidden-gem";
-  /** Ids of the RawSignals this idea was synthesized from. */
+  /**
+   * The real, clickable evidence behind this idea: each item is a source URL the
+   * scout actually retrieved, paired with the near-verbatim quote of what was
+   * said THERE. This is what the UI's Evidence panel links to — "where someone
+   * actually said it". May be empty for heuristic ideas.
+   */
+  evidence: EvidenceItem[];
+  /** Ids of the RawSignals this idea was synthesized from (the evidence URLs). */
   sourceSignalIds: string[];
   /** Lightweight provenance for UI ("found on r/SaaS + HN"). */
   sources: SourceName[];
   createdAt: string;
+}
+
+/** One clickable citation: the URL and the verbatim quote found there. */
+export interface EvidenceItem {
+  /** The exact source URL (links out to where it was said). */
+  url: string;
+  /** Near-verbatim quote of what was said at `url`. */
+  quote: string;
+  /** Platform label inferred from the URL (reddit / x / hackernews / web …). */
+  source: SourceName;
 }
 
 /** Lifecycle of an auto-build. */

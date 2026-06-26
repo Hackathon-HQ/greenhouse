@@ -136,7 +136,7 @@ function deriveSuffix(keywords: string[]): string {
  */
 function heuristicBase(cluster: RawSignal[]): Omit<
   AppIdea,
-  "id" | "score" | "signals" | "sourceSignalIds" | "sources" | "createdAt"
+  "id" | "score" | "signals" | "sourceSignalIds" | "sources" | "createdAt" | "evidence"
 > {
   const keywords = rankedKeywords(cluster);
   const top = keywords.slice(0, 6);
@@ -480,9 +480,17 @@ export async function signalsToIdea(
     suggestedStack: merged.suggestedStack,
     buildability: merged.buildability,
     tags: merged.tags,
+    sourceQuote: merged.sourceQuote,
+    intent: merged.intent,
+    // Real clickable citations: each signal's URL + a quote from it.
+    evidence: cluster.slice(0, 6).map((s) => ({
+      url: s.url,
+      quote: (s.summary || s.title || "").replace(/\s+/g, " ").slice(0, 240),
+      source: s.source,
+    })),
     score: 0,
     signals: { demand: 0, recency: 0, novelty: 0, feasibility: 0 },
-    sourceSignalIds: cluster.map((s) => s.id),
+    sourceSignalIds: cluster.map((s) => s.url || s.id),
     sources: clusterSources(cluster),
     createdAt: new Date().toISOString(),
   };

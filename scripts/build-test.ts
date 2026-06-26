@@ -31,6 +31,7 @@ const idea: AppIdea = {
   tags: ["finance", "freelance", "calculator"],
   score: 0.5,
   signals: { demand: 0.5, recency: 0.5, novelty: 0.5, feasibility: 0.9 },
+  evidence: [],
   sourceSignalIds: [],
   sources: [],
   createdAt: new Date().toISOString(),

@@ -73,14 +73,26 @@ const ideaSchema = z.object({
   buildability: z.enum(["trivial", "moderate", "ambitious"]).default("moderate"),
   tags: z.array(z.string()).default([]),
   evidence: z
-    .array(z.string())
+    .array(
+      z.object({
+        url: z
+          .string()
+          .describe("The EXACT source URL (a real link to the specific post/thread/review)."),
+        quote: z
+          .string()
+          .describe("Near-verbatim quote of what was actually said at that URL."),
+      }),
+    )
     .default([])
-    .describe("Source URLs this idea is grounded in."),
+    .describe(
+      "Each real source you actually retrieved, paired with the verbatim quote " +
+        "found THERE. These become clickable citations — link to where it was said.",
+    ),
   sourceQuote: z
     .string()
     .describe(
-      "The actual complaint/suggestion from the source, close to its original " +
-        "wording (light cleanup only — do NOT paraphrase into a generic pitch).",
+      "The single most compelling verbatim quote across your evidence (the headline " +
+        "proof of demand) — close to its original wording, do NOT paraphrase.",
     ),
   intent: z
     .enum(["demand", "hidden-gem"])
@@ -104,23 +116,31 @@ function slugify(text: string): string {
   );
 }
 
-/** Infer which sources an idea drew on from its evidence URLs. */
-function inferSources(evidence: string[]): SourceName[] {
-  const set = new Set<SourceName>();
-  for (const url of evidence) {
-    const u = url.toLowerCase();
-    if (u.includes("reddit.com")) set.add("reddit");
-    else if (u.includes("ycombinator")) set.add("hackernews");
-    else if (u.includes("x.com") || u.includes("twitter.com")) set.add("x");
-    else if (u.startsWith("http")) set.add("tavily");
-  }
-  return set.size ? [...set] : ["tavily"];
+/** Infer the platform label for a single source URL. */
+function inferSource(url: string): SourceName {
+  const u = url.toLowerCase();
+  if (u.includes("reddit.com")) return "reddit";
+  if (u.includes("ycombinator")) return "hackernews";
+  if (u.includes("x.com") || u.includes("twitter.com")) return "x";
+  if (u.includes("github.com")) return "github";
+  if (u.includes("stackexchange") || u.includes("stackoverflow")) return "stackexchange";
+  if (u.includes("apps.apple.com") || u.includes("itunes.apple")) return "appstore";
+  return "tavily";
 }
 
 /** Coerce an emitted idea into a complete, scored-pending AppIdea. */
 function toAppIdea(e: EmittedIdea): AppIdea {
   const title = (e.title ?? "Untitled").trim();
-  const evidence = (e.evidence ?? []).filter(Boolean);
+  // Normalize evidence to {url, quote, source}, keeping only real http(s) URLs.
+  const evidence = (e.evidence ?? [])
+    .filter((x) => x && typeof x.url === "string" && /^https?:\/\//.test(x.url))
+    .map((x) => ({
+      url: x.url,
+      quote: (x.quote ?? "").trim(),
+      source: inferSource(x.url),
+    }));
+  const urls = evidence.map((x) => x.url);
+  const sources = [...new Set(evidence.map((x) => x.source))];
   return {
     id: `idea-${slugify(title)}`,
     title,
@@ -132,12 +152,16 @@ function toAppIdea(e: EmittedIdea): AppIdea {
     suggestedStack: e.suggestedStack ?? [],
     buildability: e.buildability ?? "moderate",
     tags: (e.tags ?? []).slice(0, 8),
-    sourceQuote: e.sourceQuote,
+    sourceQuote:
+      (typeof e.sourceQuote === "string" && e.sourceQuote.trim()) ||
+      evidence[0]?.quote ||
+      undefined,
     intent: e.intent,
+    evidence,
     score: 0,
     signals: { demand: 0, recency: 0, novelty: 0, feasibility: 0 },
-    sourceSignalIds: evidence,
-    sources: inferSources(evidence),
+    sourceSignalIds: urls,
+    sources: sources.length ? sources : ["tavily"],
     createdAt: new Date().toISOString(),
   };
 }
@@ -176,8 +200,9 @@ function researchSystemPrompt(target: number): string {
     "(A) DEMAND — what people want / complain about NOW.",
     "(B) HIDDEN GEMS — strong ideas posted a while ago that were never built and aren't discussed today (search without a recency filter; sanity-check it isn't already mainstream).",
     "",
-    "## Filter, don't invent",
-    "Keep `sourceQuote` close to the source's actual words (light cleanup only). Don't abstract a vivid, specific gripe into a generic 'AI assistant for X'.",
+    "## Filter, don't invent — and cite where it was said",
+    "Keep quotes close to the source's actual words (light cleanup only). Don't abstract a vivid, specific gripe into a generic 'AI assistant for X'.",
+    "For `evidence`, list each REAL source you actually retrieved as {url, quote}: the EXACT page URL (the specific reddit/HN/X/review thread — not a homepage) paired with the verbatim line said there. People will click these to see where it was said, so the URL must be the real one your search/extract returned.",
     "",
     "## Emit as you go",
     `Don't over-research before producing anything — emit your first idea early and keep emitting as you ground them. Aim for ${target} distinct ideas, each with its intent and evidence URLs. Favor specific niches over generic ideas.`,

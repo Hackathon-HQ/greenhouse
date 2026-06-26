@@ -13,6 +13,10 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import type { LanguageModel } from "ai";
 import { config } from "../config.js";
 
+// Silence the noisy (auto-recovered) Gemini 3 "thoughtSignature" warning the AI
+// SDK logs on every tool-call replay — it floods server logs and is benign.
+(globalThis as { AI_SDK_LOG_WARNINGS?: boolean }).AI_SDK_LOG_WARNINGS = false;
+
 /** True when some scout LLM credential is available (Gemini or umans). */
 export function providerAvailable(): boolean {
   return Boolean(config.gemini.apiKey) || config.umans.apiKeys.length > 0;

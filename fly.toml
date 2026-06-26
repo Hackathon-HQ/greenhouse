@@ -9,9 +9,8 @@ primary_region = "lhr"
 [env]
   HOST = "0.0.0.0"
   PORT = "8787"
-  # Cursor auto-build is a local-dev feature (cursor-agent CLI isn't in the
-  # container); the deterministic scaffold fallback handles builds here.
-  CURSOR_ENABLED = "false"
+  # Real Cursor builds: the cursor-agent CLI is baked into the image (Dockerfile).
+  CURSOR_ENABLED = "true"
 
 [http_service]
   internal_port = 8787
@@ -21,5 +20,5 @@ primary_region = "lhr"
   min_machines_running = 0
 
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "1gb"
+  size = "shared-cpu-2x"
+  memory = "2gb"

@@ -35,6 +35,8 @@ export interface AppIdea {
     feasibility: number;
   };
   sourceQuote?: string;
+  /** Real source links: exact URL paired with the verbatim quote found there. */
+  evidence?: { url: string; quote: string; source: string }[];
   intent?: "demand" | "hidden-gem";
   /** URLs of the raw signals this idea came from. */
   sourceSignalIds: string[];

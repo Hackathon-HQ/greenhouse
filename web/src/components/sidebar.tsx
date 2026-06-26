@@ -1,4 +1,4 @@
-import { Check, Code, Download, Eye } from "lucide-react";
+import { Check, Code, Eye } from "lucide-react";
 import type { BuildingSeed, BuiltSeed } from "@/lib/data";
 
 function SectionLabel({ label, count }: { label: string; count: number }) {
@@ -11,6 +11,14 @@ function SectionLabel({ label, count }: { label: string; count: number }) {
         {count}
       </span>
     </div>
+  );
+}
+
+function EmptyHint({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="rounded-xl border border-dashed border-border px-3 py-3 text-[12px] leading-[18px] text-muted">
+      {children}
+    </p>
   );
 }
 
@@ -111,8 +119,11 @@ function BuiltCard({ seed }: { seed: BuiltSeed }) {
       <span className="mt-[10px] font-mono text-[11px] tracking-[-0.01em] text-sub">{seed.meta}</span>
       <div className="mt-[11px] flex flex-wrap items-center gap-1.5">
         <ActionChip icon={Eye} label="View" strong href={seed.previewUrl} />
-        <ActionChip icon={Download} label="Export" />
-        <ActionChip icon={Code} label="Open in Cursor" />
+        <ActionChip
+          icon={Code}
+          label="Open in Cursor"
+          href={seed.workdir ? `cursor://file/${seed.workdir}` : undefined}
+        />
       </div>
     </CardShell>
   );
@@ -133,15 +144,19 @@ export function Sidebar({
       <div className="scroll-area flex flex-1 flex-col gap-5 overflow-y-auto px-3.5 py-4">
         <section className="flex flex-col gap-1.5">
           <SectionLabel label="BUILDING" count={building.length} />
-          {building.map((seed) => (
-            <BuildingCard key={seed.id} seed={seed} />
-          ))}
+          {building.length === 0 ? (
+            <EmptyHint>Approve an idea to start building it here.</EmptyHint>
+          ) : (
+            building.map((seed) => <BuildingCard key={seed.id} seed={seed} />)
+          )}
         </section>
         <section className="flex flex-col gap-1.5">
           <SectionLabel label="BUILT" count={built.length} />
-          {built.map((seed) => (
-            <BuiltCard key={seed.id} seed={seed} />
-          ))}
+          {built.length === 0 ? (
+            <EmptyHint>Finished builds will appear here.</EmptyHint>
+          ) : (
+            built.map((seed) => <BuiltCard key={seed.id} seed={seed} />)
+          )}
         </section>
       </div>
     </aside>

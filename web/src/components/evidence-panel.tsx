@@ -3,7 +3,7 @@ import { faviconUrl, type Source } from "@/lib/data";
 function SourceItem({ source, first }: { source: Source; first: boolean }) {
   return (
     <a
-      href={`https://${source.domain}`}
+      href={source.url || `https://${source.domain}`}
       target="_blank"
       rel="noreferrer"
       className={`group flex gap-2.5 py-[11px] transition-colors ${

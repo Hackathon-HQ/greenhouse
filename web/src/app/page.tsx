@@ -13,6 +13,7 @@ import {
   type ReviewSeed,
 } from "@/lib/data";
 import {
+  apiBaseUrl,
   build as buildIdea,
   discover,
   getFeed,
@@ -125,11 +126,16 @@ export default function Home() {
     const conf = meta?.confidence ?? 0;
 
     if (a.status === "succeeded") {
+      // "View" must hit the HOSTED preview route — the artifact's previewUrl is a
+      // server-side file:// path a browser can't open.
+      const hostedPreview = `${apiBaseUrl()}/api/builds/${encodeURIComponent(a.ideaId)}/preview`;
       setBuilding((prev) => prev.filter((b) => b.id !== a.ideaId));
       setBuilt((prev) => {
         if (prev.some((b) => b.id === a.ideaId)) {
           return prev.map((b) =>
-            b.id === a.ideaId ? { ...b, previewUrl: a.previewUrl ?? b.previewUrl } : b,
+            b.id === a.ideaId
+              ? { ...b, previewUrl: hostedPreview, workdir: a.workdir ?? b.workdir }
+              : b,
           );
         }
         return [
@@ -138,7 +144,8 @@ export default function Home() {
             title,
             age: "now",
             meta: `${sourcesN} sources · ${conf}% · Built`,
-            previewUrl: a.previewUrl,
+            previewUrl: hostedPreview,
+            workdir: a.workdir,
           },
           ...prev,
         ];

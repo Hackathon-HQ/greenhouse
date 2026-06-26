@@ -68,16 +68,58 @@ function sourceFromUrl(url: string, idea: AppIdea, i: number): Source {
     const host = u.hostname.replace(/^www\./, "");
     const seg = u.pathname.split("/").filter(Boolean)[0];
     const domain = seg ? `${host}/${seg}` : host;
-    return { id, name: labelFromHost(host), host, age: relativeTime(idea.createdAt), quote, domain };
+    return { id, name: labelFromHost(host), host, url, age: relativeTime(idea.createdAt), quote, domain };
   } catch {
     // Not a URL — fall back to treating it as a provenance string.
     const host = hostFromSourceName(url);
-    return { id, name: labelFromSourceName(url), host, age: relativeTime(idea.createdAt), quote, domain: host };
+    return { id, name: labelFromSourceName(url), host, url, age: relativeTime(idea.createdAt), quote, domain: host };
+  }
+}
+
+/** Turn a real evidence item (url + verbatim quote + provenance) into a Source. */
+function sourceFromEvidence(
+  e: { url: string; quote: string; source: string },
+  idea: AppIdea,
+  i: number,
+): Source {
+  const id = `${idea.id}-e${i}`;
+  try {
+    const u = new URL(e.url);
+    const host = u.hostname.replace(/^www\./, "");
+    const seg = u.pathname.split("/").filter(Boolean)[0];
+    const domain = seg ? `${host}/${seg}` : host;
+    return {
+      id,
+      name: labelFromHost(host),
+      host,
+      url: e.url,
+      age: relativeTime(idea.createdAt),
+      quote: e.quote ?? "",
+      domain,
+    };
+  } catch {
+    // url isn't a parseable URL — fall back to provenance string for labels.
+    const host = hostFromSourceName(e.source || e.url);
+    return {
+      id,
+      name: labelFromSourceName(e.source || e.url),
+      host,
+      url: e.url,
+      age: relativeTime(idea.createdAt),
+      quote: e.quote ?? "",
+      domain: host,
+    };
   }
 }
 
 /** Build the evidence Source[] for an idea. */
 function buildSources(idea: AppIdea): Source[] {
+  // Preferred: real evidence links (exact url paired with verbatim quote).
+  const evidence = idea.evidence ?? [];
+  if (evidence.length) {
+    return evidence.map((e, i) => sourceFromEvidence(e, idea, i));
+  }
+  // Fallback: derive sources from the raw signal URLs.
   const ids = idea.sourceSignalIds ?? [];
   if (ids.length) {
     return ids.map((url, i) => sourceFromUrl(url, idea, i));
@@ -90,6 +132,7 @@ function buildSources(idea: AppIdea): Source[] {
       id: `${idea.id}-s0`,
       name: labelFromSourceName(name),
       host,
+      url: `https://${host}`,
       age: relativeTime(idea.createdAt),
       quote: idea.sourceQuote ?? "",
       domain: host,
@@ -99,7 +142,7 @@ function buildSources(idea: AppIdea): Source[] {
 
 /** Count of corroborating source signals for an idea. */
 export function signalCountFor(idea: AppIdea): number {
-  return idea.sourceSignalIds?.length || idea.sources?.length || 0;
+  return idea.evidence?.length || idea.sourceSignalIds?.length || idea.sources?.length || 0;
 }
 
 /** Map a backend AppIdea into the frontend ReviewSeed view-model. */

@@ -2,6 +2,7 @@ export type Source = {
   id: string;
   name: string; // display label, e.g. "Reddit"
   host: string; // registrable domain used to fetch the real favicon
+  url: string; // the REAL link to open, e.g. the exact post/comment URL
   age: string;
   quote: string;
   domain: string; // displayed path, e.g. "reddit.com/r/personalfinance"
@@ -36,6 +37,8 @@ export type BuiltSeed = {
   meta: string;
   /** Live preview URL once the auto-build has deployed one. */
   previewUrl?: string;
+  /** Server-side path of the generated project, for the "Open in Cursor" deep link. */
+  workdir?: string;
 };
 
 /** Real favicons, pulled from each source's domain (like ChatGPT citations). */
@@ -64,6 +67,7 @@ export const reviewSeeds: ReviewSeed[] = [
         id: "s1",
         name: "Reddit",
         host: "reddit.com",
+        url: "https://reddit.com/r/personalfinance",
         age: "2d",
         quote: "“Does anyone know a simple app for splitting grocery receipts with roommates?”",
         domain: "reddit.com/r/personalfinance",
@@ -72,6 +76,7 @@ export const reviewSeeds: ReviewSeed[] = [
         id: "s2",
         name: "X",
         host: "x.com",
+        url: "https://x.com/maya_builds",
         age: "3d",
         quote: "“splitting receipts with my flatmates every single week is genuinely painful”",
         domain: "x.com/maya_builds",
@@ -80,6 +85,7 @@ export const reviewSeeds: ReviewSeed[] = [
         id: "s3",
         name: "GitHub",
         host: "github.com",
+        url: "https://github.com/splitkit/issues",
         age: "6d",
         quote: "“Feature request: snap a receipt, auto-split the line items.”",
         domain: "github.com/splitkit/issues",
@@ -88,6 +94,7 @@ export const reviewSeeds: ReviewSeed[] = [
         id: "s4",
         name: "Hacker News",
         host: "news.ycombinator.com",
+        url: "https://news.ycombinator.com",
         age: "6d",
         quote: "“Shared household expenses are still mostly tracked in spreadsheets.”",
         domain: "news.ycombinator.com",
@@ -114,6 +121,7 @@ export const reviewSeeds: ReviewSeed[] = [
         id: "s1",
         name: "Reddit",
         host: "reddit.com",
+        url: "https://reddit.com/r/Frugal",
         age: "1d",
         quote: "“I just found I’ve paid for two streaming services I never opened in a year.”",
         domain: "reddit.com/r/Frugal",
@@ -122,6 +130,7 @@ export const reviewSeeds: ReviewSeed[] = [
         id: "s2",
         name: "Hacker News",
         host: "news.ycombinator.com",
+        url: "https://news.ycombinator.com",
         age: "4d",
         quote: "“Subscription creep is the silent budget killer — nothing surfaces it well.”",
         domain: "news.ycombinator.com",
@@ -130,6 +139,7 @@ export const reviewSeeds: ReviewSeed[] = [
         id: "s3",
         name: "X",
         host: "x.com",
+        url: "https://x.com/devnotes",
         age: "5d",
         quote: "“why is cancelling a subscription harder than signing up, every single time”",
         domain: "x.com/devnotes",
@@ -155,6 +165,7 @@ export const reviewSeeds: ReviewSeed[] = [
         id: "s1",
         name: "Reddit",
         host: "reddit.com",
+        url: "https://reddit.com/r/Cooking",
         age: "3d",
         quote: "“I have eggs, spinach and half an onion — what do I even make?”",
         domain: "reddit.com/r/Cooking",
@@ -163,6 +174,7 @@ export const reviewSeeds: ReviewSeed[] = [
         id: "s2",
         name: "USDA",
         host: "usda.gov",
+        url: "https://usda.gov/foodwaste",
         age: "1w",
         quote: "“Households throw away nearly a third of the food they buy, often because it’s forgotten.”",
         domain: "usda.gov/foodwaste",
@@ -171,6 +183,7 @@ export const reviewSeeds: ReviewSeed[] = [
         id: "s3",
         name: "GitHub",
         host: "github.com",
+        url: "https://github.com/pantry/ideas",
         age: "1w",
         quote: "“Idea: pantry-first recipe search instead of recipe-first shopping.”",
         domain: "github.com/pantry/ideas",
@@ -179,37 +192,10 @@ export const reviewSeeds: ReviewSeed[] = [
   },
 ];
 
-export const initialBuilding: BuildingSeed[] = [
-  {
-    id: "b-freelance",
-    title: "Freelance Invoice Chaser",
-    age: "now",
-    meta: "11 sources · 79% · Building",
-    steps: [
-      { label: "Writing spec", done: true },
-      { label: "Building prototype", done: true },
-      { label: "Publishing cited.md", done: false },
-      { label: "Deploying preview", done: false },
-    ],
-  },
-  {
-    id: "b-gym",
-    title: "Gym Plan Adjuster",
-    age: "4m",
-    meta: "6 sources · 81% · Building",
-    steps: [
-      { label: "Writing spec", done: true },
-      { label: "Building prototype", done: true },
-      { label: "Publishing cited.md", done: true },
-      { label: "Deploying preview", done: false },
-    ],
-  },
-];
+// Sidebar starts empty and fills only from real approve→build actions.
+export const initialBuilding: BuildingSeed[] = [];
 
-export const initialBuilt: BuiltSeed[] = [
-  { id: "t-feedback", title: "Tiny Feedback Board", age: "2h", meta: "5 sources · 72% · Built" },
-  { id: "t-deadline", title: "Student Deadline Radar", age: "1d", meta: "8 sources · 77% · Built" },
-];
+export const initialBuilt: BuiltSeed[] = [];
 
 export function freshBuildSteps(): BuildStep[] {
   return [

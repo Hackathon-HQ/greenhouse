@@ -10,6 +10,8 @@
  *   GET  /api/builds/:ideaId      latest build artifact or 404
  *   GET  /api/stream              Server-Sent Events feed of idea + build updates
  */
+import { promises as fs } from "node:fs";
+import path from "node:path";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { AppIdea, BuildArtifact } from "../types.js";
 import { store } from "../store/store.js";
@@ -99,6 +101,29 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     if (!artifact) return reply.code(404).send({ error: "build not found" });
     return artifact;
   });
+
+  // Serve the built MVP's index.html over HTTP so the UI's "View" works (the
+  // artifact's previewUrl is a server-side file:// path, unreachable by a browser).
+  app.get<{ Params: IdeaIdParams }>(
+    "/api/builds/:ideaId/preview",
+    async (req, reply) => {
+      const artifact = store.getBuild(req.params.ideaId);
+      if (!artifact?.workdir) {
+        return reply.code(404).send({ error: "no build for this idea" });
+      }
+      try {
+        const html = await fs.readFile(
+          path.join(artifact.workdir, "index.html"),
+          "utf8",
+        );
+        return reply
+          .header("Content-Type", "text/html; charset=utf-8")
+          .send(html);
+      } catch {
+        return reply.code(404).send({ error: "no preview file" });
+      }
+    },
+  );
 
   app.get("/api/stream", async (req, reply) => {
     openSseStream(req, reply);

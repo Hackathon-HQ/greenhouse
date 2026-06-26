@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Sparkles } from "lucide-react";
 import {
   freshBuildSteps,
   initialBuilding,
@@ -56,9 +55,6 @@ const cardVariants = {
 function EmptyState({ onReset, loading }: { onReset: () => void; loading: boolean }) {
   return (
     <div className="flex flex-col items-center gap-4 px-10 text-center">
-      <div className="flex size-12 items-center justify-center rounded-2xl border border-border bg-soft">
-        <Sparkles className={`size-5 text-ink ${loading ? "animate-pulse" : ""}`} />
-      </div>
       <div className="flex flex-col gap-1.5">
         <h2 className="text-[20px] font-semibold tracking-[-0.02em] text-ink">
           {loading ? "Hunting the open web…" : "You’re all caught up"}
@@ -73,9 +69,8 @@ function EmptyState({ onReset, loading }: { onReset: () => void; loading: boolea
         type="button"
         onClick={onReset}
         disabled={loading}
-        className="mt-1 flex h-10 items-center gap-2 rounded-[10px] bg-accent px-4 text-[13.5px] font-medium text-white transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+        className="mt-1 flex h-10 items-center justify-center rounded-[10px] bg-accent px-5 text-[13.5px] font-medium text-white transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        <Sparkles className={`size-4 ${loading ? "animate-spin" : ""}`} />
         {loading ? "Hunting…" : "Hunt for more seeds"}
       </button>
     </div>
